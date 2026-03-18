@@ -1,5 +1,7 @@
+import asyncio
 import uuid
 from datetime import datetime, timezone
+from functools import lru_cache
 
 import plaid
 from plaid.api import plaid_api
@@ -23,6 +25,7 @@ class PlaidServiceError(Exception):
         self.status_code = status_code
 
 
+@lru_cache(maxsize=1)
 def _get_plaid_client() -> plaid_api.PlaidApi:
     env_map = {
         "sandbox": plaid.Environment.Sandbox,
@@ -56,7 +59,7 @@ async def create_link_token(user_id: uuid.UUID) -> dict:
 
     request = LinkTokenCreateRequest(**kwargs)
 
-    response = client.link_token_create(request)
+    response = await asyncio.to_thread(client.link_token_create, request)
     return {
         "link_token": response.link_token,
         "expiration": response.expiration,
@@ -78,7 +81,7 @@ async def exchange_public_token(
 
     # Exchange public token
     exchange_request = ItemPublicTokenExchangeRequest(public_token=public_token)
-    exchange_response = client.item_public_token_exchange(exchange_request)
+    exchange_response = await asyncio.to_thread(client.item_public_token_exchange, exchange_request)
 
     access_token = exchange_response.access_token
     item_id = exchange_response.item_id
@@ -107,7 +110,7 @@ async def exchange_public_token(
     from plaid.model.accounts_get_request import AccountsGetRequest
 
     accounts_request = AccountsGetRequest(access_token=access_token)
-    accounts_response = client.accounts_get(accounts_request)
+    accounts_response = await asyncio.to_thread(client.accounts_get, accounts_request)
 
     account_type_map = {
         "depository": "checking",
@@ -228,7 +231,7 @@ async def sync_transactions(
             access_token=access_token,
             cursor=cursor,
         )
-        response = client.transactions_sync(sync_request)
+        response = await asyncio.to_thread(client.transactions_sync, sync_request)
 
         # Process added transactions
         for txn in response.added:
@@ -284,6 +287,13 @@ async def sync_transactions(
                 existing_txn.description = txn.name
                 existing_txn.merchant_name = getattr(txn, "merchant_name", None)
                 existing_txn.is_pending = txn.pending
+
+                # Re-resolve category on modification
+                plaid_primary = None
+                if hasattr(txn, "personal_finance_category") and txn.personal_finance_category:
+                    plaid_primary = txn.personal_finance_category.primary
+                existing_txn.category_id = await _resolve_category_id(db, plaid_primary)
+
                 modified_count += 1
 
         # Process removed transactions
@@ -326,7 +336,7 @@ async def sync_liabilities(
     access_token = decrypt_value(plaid_item.access_token)
 
     liab_request = LiabilitiesGetRequest(access_token=access_token)
-    response = client.liabilities_get(liab_request)
+    response = await asyncio.to_thread(client.liabilities_get, liab_request)
 
     credit_synced = 0
     liability_data = []
@@ -385,6 +395,7 @@ from jose import jwt as jose_jwt
 
 # Cache for Plaid webhook verification keys (TTL: 24 hours per Plaid recommendation)
 _webhook_key_cache: dict[str, tuple[dict, float]] = {}
+_webhook_key_cache_lock = asyncio.Lock()
 WEBHOOK_KEY_CACHE_TTL = 86400  # 24 hours
 
 
@@ -429,28 +440,29 @@ async def verify_plaid_webhook(body: bytes, plaid_verification_header: str | Non
 
 async def _get_webhook_verification_key(key_id: str) -> dict | None:
     """Fetch Plaid's webhook verification public key, with caching."""
-    now = time.time()
+    async with _webhook_key_cache_lock:
+        now = time.time()
 
-    # Check cache
-    if key_id in _webhook_key_cache:
-        cached_key, cached_at = _webhook_key_cache[key_id]
-        if now - cached_at < WEBHOOK_KEY_CACHE_TTL:
-            return cached_key
+        # Check cache
+        if key_id in _webhook_key_cache:
+            cached_key, cached_at = _webhook_key_cache[key_id]
+            if now - cached_at < WEBHOOK_KEY_CACHE_TTL:
+                return cached_key
 
-    # Fetch from Plaid
-    try:
-        client = _get_plaid_client()
-        from plaid.model.webhook_verification_key_get_request import (
-            WebhookVerificationKeyGetRequest,
-        )
+        # Fetch from Plaid
+        try:
+            client = _get_plaid_client()
+            from plaid.model.webhook_verification_key_get_request import (
+                WebhookVerificationKeyGetRequest,
+            )
 
-        request = WebhookVerificationKeyGetRequest(key_id=key_id)
-        response = client.webhook_verification_key_get(request)
-        key = response.key
-        _webhook_key_cache[key_id] = (key, now)
-        return key
-    except Exception:
-        return None
+            request = WebhookVerificationKeyGetRequest(key_id=key_id)
+            response = await asyncio.to_thread(client.webhook_verification_key_get, request)
+            key = response.key
+            _webhook_key_cache[key_id] = (key, now)
+            return key
+        except Exception:
+            return None
 
 
 async def handle_webhook_event(
@@ -506,7 +518,10 @@ def should_sync_item(plaid_item: PlaidItem) -> bool:
         return True  # Never synced
 
     now = datetime.now(timezone.utc)
-    time_since_sync = now - plaid_item.last_synced_at
+    last_synced = plaid_item.last_synced_at
+    if last_synced.tzinfo is None:
+        last_synced = last_synced.replace(tzinfo=timezone.utc)
+    time_since_sync = now - last_synced
 
     # Skip if recently synced (webhook likely handled it)
     if time_since_sync < WEBHOOK_RECENT_THRESHOLD:

@@ -237,11 +237,11 @@ async def update_transaction(
     if not txn:
         raise HTTPException(status_code=404, detail="Transaction not found")
 
+    ALLOWED_UPDATE_FIELDS = {"category_id", "notes", "description", "merchant_name"}
     update_data = request.model_dump(exclude_unset=True)
     for key, value in update_data.items():
-        if key == "amount" and value is not None:
-            from decimal import Decimal
-            value = Decimal(value)
+        if key not in ALLOWED_UPDATE_FIELDS:
+            continue
         setattr(txn, key, value)
 
     await db.commit()

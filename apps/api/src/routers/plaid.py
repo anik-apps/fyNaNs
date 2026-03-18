@@ -1,7 +1,8 @@
+import json
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_db
@@ -65,7 +66,7 @@ async def receive_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     if not verified:
         raise HTTPException(status_code=400, detail="Webhook verification failed")
 
-    payload = await request.json()
+    payload = json.loads(body)
     webhook_type = payload.get("webhook_type", "")
     webhook_code = payload.get("webhook_code", "")
     item_id = payload.get("item_id", "")

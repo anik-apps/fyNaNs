@@ -2,7 +2,7 @@ import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 
-from sqlalchemy import select, and_, desc
+from sqlalchemy import desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.account import Account
@@ -77,10 +77,11 @@ async def list_transactions(
     if date_to:
         query = query.where(Transaction.date <= date_to)
     if search:
-        query = query.where(
-            Transaction.description.ilike(f"%{search}%")
-            | Transaction.merchant_name.ilike(f"%{search}%")
-        )
+        escaped = search.replace("%", "\\%").replace("_", "\\_")
+        query = query.where(or_(
+            Transaction.description.ilike(f"%{escaped}%"),
+            Transaction.merchant_name.ilike(f"%{escaped}%"),
+        ))
 
     # Cursor-based pagination: cursor is the last seen transaction id
     if cursor:

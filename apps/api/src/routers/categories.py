@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_db
@@ -59,14 +59,13 @@ async def update_category_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(Category).where(Category.id == category_id)
+        select(Category).where(
+            Category.id == category_id,
+            or_(Category.user_id == user.id, Category.is_system.is_(True)),
+        )
     )
     category = result.scalar_one_or_none()
     if not category:
-        raise HTTPException(status_code=404, detail="Category not found")
-
-    # Only allow editing own categories
-    if not category.is_system and category.user_id != user.id:
         raise HTTPException(status_code=404, detail="Category not found")
 
     if category.is_system:
@@ -88,7 +87,10 @@ async def delete_category_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(Category).where(Category.id == category_id)
+        select(Category).where(
+            Category.id == category_id,
+            or_(Category.user_id == user.id, Category.is_system.is_(True)),
+        )
     )
     category = result.scalar_one_or_none()
     if not category:

@@ -40,12 +40,17 @@ async def create_manual_account(
     return account
 
 
+ALLOWED_UPDATE_FIELDS = {"name", "balance", "institution_name"}
+
+
 async def update_account(
     db: AsyncSession,
     account: Account,
     **kwargs,
 ) -> Account:
     for key, value in kwargs.items():
+        if key not in ALLOWED_UPDATE_FIELDS:
+            continue
         if value is not None:
             if key == "balance":
                 value = Decimal(value)
