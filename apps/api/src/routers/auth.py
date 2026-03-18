@@ -2,8 +2,7 @@ import hashlib
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_db
@@ -15,6 +14,13 @@ from src.models.user_settings import UserSettings
 from src.routers.deps import get_current_user
 from src.schemas.auth import (
     LoginRequest,
+    MFAConfirmRequest,
+    MFAVerifyRequest,
+    OAuthRequest,
+    PasswordResetConfirm,
+    PasswordResetRequest,
+    PasswordSetRequest,
+    RefreshRequest,
     RegisterRequest,
     SessionResponse,
     TokenResponse,
@@ -80,16 +86,13 @@ async def login(
 async def refresh(
     http_request: Request,
     response: Response,
+    body: RefreshRequest | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     # Try cookie first (web), then body (mobile)
     raw_token = http_request.cookies.get("refresh_token")
-    if not raw_token:
-        try:
-            body = await http_request.json()
-            raw_token = body.get("refresh_token")
-        except Exception:
-            pass
+    if not raw_token and body:
+        raw_token = body.refresh_token
 
     if not raw_token:
         raise HTTPException(status_code=401, detail="No refresh token provided")
@@ -117,16 +120,13 @@ async def refresh(
 async def logout(
     http_request: Request,
     response: Response,
+    body: RefreshRequest | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     # Get token from cookie (web) or body (mobile)
     raw_token = http_request.cookies.get("refresh_token")
-    if not raw_token:
-        try:
-            body = await http_request.json()
-            raw_token = body.get("refresh_token")
-        except Exception:
-            pass
+    if not raw_token and body:
+        raw_token = body.refresh_token
 
     # Invalidate in DB if token was provided
     if raw_token:
@@ -139,10 +139,6 @@ async def logout(
 
 
 # --- OAuth endpoint (Task 11) ---
-
-
-class OAuthRequest(BaseModel):
-    id_token: str
 
 
 @router.post("/oauth/{provider}", response_model=TokenResponse)
@@ -174,6 +170,9 @@ async def oauth_login(
         user_id = oauth_account.user_id
     else:
         # Check if user with this email exists (link accounts)
+        # TODO: Security risk — linking OAuth to an existing account by email alone
+        # does not verify ownership of the email on the existing account. A full fix
+        # would require email-verification before linking. Out of scope for Plan 1.
         result = await db.execute(select(User).where(User.email == oauth_info["email"]))
         user = result.scalar_one_or_none()
 
@@ -215,21 +214,20 @@ async def oauth_login(
 # --- MFA endpoints (Task 12) ---
 
 
-class MFAConfirmRequest(BaseModel):
-    secret: str
-    code: str
-
-
 @router.post("/mfa/setup")
 async def mfa_setup(
     user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
-    """Generate a TOTP secret and return it. Does NOT enable MFA yet.
-    User must call /mfa/confirm with a valid code to activate MFA."""
+    """Generate a TOTP secret, store it as pending, and return it.
+    Does NOT enable MFA yet -- user must call /mfa/confirm with a valid code."""
+    from src.core.security import encrypt_value
     from src.schemas.auth import MFASetupResponse
     from src.services.mfa import generate_mfa_secret, get_totp_uri
 
     secret = generate_mfa_secret()
+    user.pending_mfa_secret = encrypt_value(secret)
+    await db.commit()
     return MFASetupResponse(
         secret=secret,
         otpauth_uri=get_totp_uri(secret, user.email),
@@ -243,19 +241,26 @@ async def mfa_confirm(
     db: AsyncSession = Depends(get_db),
 ):
     """Confirm MFA setup by providing a valid TOTP code. This activates MFA on the account."""
-    from src.core.security import encrypt_value
+    from src.core.security import decrypt_value, encrypt_value
     from src.services.mfa import verify_totp
 
-    if not verify_totp(request.secret, request.code):
+    if not user.pending_mfa_secret:
+        raise HTTPException(status_code=400, detail="No pending MFA setup. Call /mfa/setup first.")
+
+    pending_secret = decrypt_value(user.pending_mfa_secret)
+
+    if not verify_totp(pending_secret, request.code):
         raise HTTPException(status_code=400, detail="Invalid code. Scan the QR code and try again.")
 
-    user.mfa_secret = encrypt_value(request.secret)
+    user.mfa_secret = encrypt_value(pending_secret)
+    user.pending_mfa_secret = None
     await db.commit()
     return {"detail": "MFA enabled successfully"}
 
 
 @router.post("/mfa/verify", response_model=TokenResponse)
 async def mfa_verify(
+    mfa_request: MFAVerifyRequest,
     http_request: Request,
     response: Response,
     db: AsyncSession = Depends(get_db),
@@ -266,15 +271,7 @@ async def mfa_verify(
         decode_mfa_pending_token,
         decrypt_value,
     )
-    from src.schemas.auth import MFAVerifyRequest
     from src.services.mfa import verify_totp
-
-    # Parse request body
-    try:
-        body = await http_request.json()
-        mfa_request = MFAVerifyRequest(**body)
-    except Exception:
-        raise HTTPException(status_code=422, detail="Invalid request body") from None
 
     # Try to get token from Authorization header
     auth_header = http_request.headers.get("authorization", "")
@@ -330,25 +327,17 @@ async def mfa_verify(
 
 @router.post("/password/reset-request")
 async def password_reset_request(
+    request: PasswordResetRequest,
     db: AsyncSession = Depends(get_db),
-    *,
-    http_request: Request,
 ):
     from src.core.security import create_password_reset_token
-    from src.schemas.auth import PasswordResetRequest
     from src.services.email import send_password_reset_email
-
-    try:
-        body = await http_request.json()
-        request = PasswordResetRequest(**body)
-    except Exception:
-        raise HTTPException(status_code=422, detail="Invalid request body") from None
 
     result = await db.execute(select(User).where(User.email == request.email))
     user = result.scalar_one_or_none()
 
     if user and user.password_hash:
-        token = create_password_reset_token(user.id)
+        token = create_password_reset_token(user.id, user.password_hash)
         send_password_reset_email(user.email, token)
 
     # Always return 200 to not reveal if email exists
@@ -357,17 +346,10 @@ async def password_reset_request(
 
 @router.post("/password/reset")
 async def password_reset(
-    http_request: Request,
+    request: PasswordResetConfirm,
     db: AsyncSession = Depends(get_db),
 ):
     from src.core.security import decode_password_reset_token, hash_password
-    from src.schemas.auth import PasswordResetConfirm
-
-    try:
-        body = await http_request.json()
-        request = PasswordResetConfirm(**body)
-    except Exception:
-        raise HTTPException(status_code=422, detail="Invalid request body") from None
 
     try:
         payload = decode_password_reset_token(request.token)
@@ -381,6 +363,14 @@ async def password_reset(
     if not user:
         raise HTTPException(status_code=400, detail="Invalid token")
 
+    # Verify password hasn't already been changed (prevents token reuse)
+    if user.password_hash:
+        current_fingerprint = hashlib.sha256(user.password_hash.encode()).hexdigest()[:16]
+        if payload.get("pwh") != current_fingerprint:
+            raise HTTPException(
+                status_code=400, detail="Reset token already used or password was changed"
+            )
+
     user.password_hash = hash_password(request.new_password)
     await db.commit()
     return {"detail": "Password reset successfully"}
@@ -388,18 +378,11 @@ async def password_reset(
 
 @router.post("/password/set")
 async def password_set(
-    http_request: Request,
+    request: PasswordSetRequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     from src.core.security import hash_password
-    from src.schemas.auth import PasswordSetRequest
-
-    try:
-        body = await http_request.json()
-        request = PasswordSetRequest(**body)
-    except Exception:
-        raise HTTPException(status_code=422, detail="Invalid request body") from None
 
     if user.password_hash:
         raise HTTPException(status_code=400, detail="Password already set. Use reset instead.")
@@ -419,7 +402,10 @@ async def list_sessions(
 ):
     result = await db.execute(
         select(RefreshToken)
-        .where(RefreshToken.user_id == user.id)
+        .where(
+            RefreshToken.user_id == user.id,
+            RefreshToken.expires_at > func.now(),
+        )
         .order_by(RefreshToken.created_at.desc())
     )
     return result.scalars().all()

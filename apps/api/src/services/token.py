@@ -3,7 +3,7 @@ import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import and_, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
@@ -42,8 +42,9 @@ async def rotate_refresh_token(
 ) -> tuple[str, str, uuid.UUID]:
     """Rotate refresh token. Returns (new_access, new_refresh, user_id).
 
-    Grace window: old token valid for 10s after rotation (handles concurrent requests).
-    Reuse outside grace window invalidates all tokens for that user+device (theft detection).
+    Grace window: if a rotated token is reused within 10s, tell the client to
+    use the new token.  Reuse outside the grace window is treated as token theft
+    and all tokens for that user+device are revoked.
     """
     token_hash = _hash_token(raw_token)
     result = await db.execute(
@@ -63,19 +64,33 @@ async def rotate_refresh_token(
 
     user_id = existing.user_id
 
-    # Check if this token was already rotated (grace window check).
-    if existing.expires_at.replace(tzinfo=UTC) <= now + timedelta(
-        seconds=GRACE_WINDOW_SECONDS
-    ):
-        raise ValueError("Token already rotated. Use the new refresh token.")
+    # Token was already rotated — check grace window vs theft
+    if existing.rotated_at is not None:
+        rotated_at = existing.rotated_at.replace(tzinfo=UTC)
+        if (now - rotated_at).total_seconds() < GRACE_WINDOW_SECONDS:
+            # Within grace window — concurrent request, tell client to use new token
+            raise ValueError("Token already rotated. Use the new refresh token.")
+        else:
+            # Outside grace window — token theft detected, revoke all for user+device
+            await db.execute(
+                delete(RefreshToken).where(
+                    and_(
+                        RefreshToken.user_id == user_id,
+                        RefreshToken.device_info == existing.device_info,
+                    )
+                )
+            )
+            await db.commit()
+            raise ValueError(
+                "Token reuse detected. All sessions for this device have been revoked."
+            )
 
-    # Perform rotation: shorten old token's expiry to grace window
-    existing.expires_at = now + timedelta(seconds=GRACE_WINDOW_SECONDS)
+    # Normal rotation: mark old token as rotated, create new pair
+    existing.rotated_at = now
     await db.flush()
 
     # Create new token pair
     access_token, new_refresh = await create_token_pair(db, user_id, device_info)
-    await db.commit()
     return access_token, new_refresh, user_id
 
 

@@ -35,9 +35,17 @@ class OAuthRequest(BaseModel):
     id_token: str
 
 
+class RefreshRequest(BaseModel):
+    refresh_token: str | None = None
+
+
 class MFASetupResponse(BaseModel):
     secret: str
     otpauth_uri: str
+
+
+class MFAConfirmRequest(BaseModel):
+    code: str
 
 
 class MFAVerifyRequest(BaseModel):
@@ -61,5 +69,6 @@ class SessionResponse(BaseModel):
     id: uuid.UUID
     device_info: str
     created_at: datetime
+    expires_at: datetime
 
     model_config = {"from_attributes": True}

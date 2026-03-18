@@ -11,7 +11,7 @@ class UserSettings(BaseModel):
     __tablename__ = "user_settings"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), unique=True, nullable=False
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False
     )
     theme: Mapped[str] = mapped_column(String(20), default="system", nullable=False)
     notify_bill_reminders: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
