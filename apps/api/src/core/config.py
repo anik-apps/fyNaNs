@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     app_url: str = "http://localhost:3000"
     api_url: str = "http://localhost:8000"
     cors_origins: str = "http://localhost:3000"
+    plaid_client_id: str = ""
+    plaid_secret: str = ""
+    plaid_env: str = "sandbox"  # sandbox, development, production
+    plaid_webhook_url: str = ""
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 
