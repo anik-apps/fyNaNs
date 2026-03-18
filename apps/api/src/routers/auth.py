@@ -31,7 +31,7 @@ async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db))
     try:
         user = await register_user(db, request.email, request.password, request.name)
     except AuthError as e:
-        raise HTTPException(status_code=e.status_code, detail=e.message)
+        raise HTTPException(status_code=e.status_code, detail=e.message) from None
     return UserResponse(
         id=user.id,
         email=user.email,
@@ -52,7 +52,7 @@ async def login(
     try:
         user = await authenticate_user(db, request.email, request.password)
     except AuthError as e:
-        raise HTTPException(status_code=e.status_code, detail=e.message)
+        raise HTTPException(status_code=e.status_code, detail=e.message) from None
 
     # If MFA is enabled, return a short-lived MFA token instead of full tokens
     if user.mfa_secret:
@@ -98,7 +98,7 @@ async def refresh(
         device_info = http_request.headers.get("user-agent", "unknown")
         access_token, new_refresh, _ = await rotate_refresh_token(db, raw_token, device_info)
     except ValueError as e:
-        raise HTTPException(status_code=401, detail=str(e))
+        raise HTTPException(status_code=401, detail=str(e)) from None
 
     response.set_cookie(
         key="refresh_token",
@@ -159,7 +159,7 @@ async def oauth_login(
     try:
         oauth_info = await verify_oauth_token(provider, request.id_token)
     except OAuthError as e:
-        raise HTTPException(status_code=400, detail=e.message)
+        raise HTTPException(status_code=400, detail=e.message) from None
 
     # Check if OAuth account exists
     result = await db.execute(
@@ -274,7 +274,7 @@ async def mfa_verify(
         body = await http_request.json()
         mfa_request = MFAVerifyRequest(**body)
     except Exception:
-        raise HTTPException(status_code=422, detail="Invalid request body")
+        raise HTTPException(status_code=422, detail="Invalid request body") from None
 
     # Try to get token from Authorization header
     auth_header = http_request.headers.get("authorization", "")
@@ -301,7 +301,7 @@ async def mfa_verify(
             if not user or not user.mfa_secret:
                 raise HTTPException(status_code=400, detail="MFA not set up")
         except ValueError:
-            raise HTTPException(status_code=401, detail="Invalid token")
+            raise HTTPException(status_code=401, detail="Invalid token") from None
 
     decrypted_secret = decrypt_value(user.mfa_secret)
 
@@ -342,7 +342,7 @@ async def password_reset_request(
         body = await http_request.json()
         request = PasswordResetRequest(**body)
     except Exception:
-        raise HTTPException(status_code=422, detail="Invalid request body")
+        raise HTTPException(status_code=422, detail="Invalid request body") from None
 
     result = await db.execute(select(User).where(User.email == request.email))
     user = result.scalar_one_or_none()
@@ -367,12 +367,12 @@ async def password_reset(
         body = await http_request.json()
         request = PasswordResetConfirm(**body)
     except Exception:
-        raise HTTPException(status_code=422, detail="Invalid request body")
+        raise HTTPException(status_code=422, detail="Invalid request body") from None
 
     try:
         payload = decode_password_reset_token(request.token)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token") from None
 
     user_id = uuid.UUID(payload["sub"])
     result = await db.execute(select(User).where(User.id == user_id))
@@ -399,7 +399,7 @@ async def password_set(
         body = await http_request.json()
         request = PasswordSetRequest(**body)
     except Exception:
-        raise HTTPException(status_code=422, detail="Invalid request body")
+        raise HTTPException(status_code=422, detail="Invalid request body") from None
 
     if user.password_hash:
         raise HTTPException(status_code=400, detail="Password already set. Use reset instead.")

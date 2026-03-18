@@ -1,6 +1,7 @@
 import uuid
 
 import pytest
+from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.security import create_access_token, decode_access_token
@@ -48,8 +49,8 @@ async def test_create_and_rotate_token_pair(db_session: AsyncSession):
         await rotate_refresh_token(db_session, refresh, "test-device")
 
 
+
 # --- Endpoint tests ---
-from httpx import AsyncClient
 
 
 @pytest.mark.asyncio

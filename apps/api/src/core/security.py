@@ -1,7 +1,7 @@
 import base64
 import os
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -28,14 +28,14 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 def create_access_token(user_id: uuid.UUID) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
+    expire = datetime.now(UTC) + timedelta(minutes=settings.access_token_expire_minutes)
     payload = {"sub": str(user_id), "exp": expire, "type": "access"}
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 
 def create_mfa_pending_token(user_id: uuid.UUID) -> str:
     """Short-lived token (5 min) issued after password auth, before MFA verification."""
-    expire = datetime.now(timezone.utc) + timedelta(minutes=5)
+    expire = datetime.now(UTC) + timedelta(minutes=5)
     payload = {"sub": str(user_id), "exp": expire, "type": "mfa_pending"}
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
@@ -61,7 +61,7 @@ def decode_access_token(token: str) -> dict:
 
 
 def create_password_reset_token(user_id: uuid.UUID) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(hours=1)
+    expire = datetime.now(UTC) + timedelta(hours=1)
     payload = {"sub": str(user_id), "exp": expire, "type": "password_reset"}
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
@@ -87,7 +87,8 @@ def _get_encryption_key() -> bytes:
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,
-            salt=b"fynans-encryption-salt",  # Static salt is OK — key derivation, not password hashing
+            # Static salt is OK — key derivation, not password hashing
+            salt=b"fynans-encryption-salt",
             iterations=100_000,
         )
         _ENCRYPTION_KEY = kdf.derive(settings.encryption_master_secret.encode())
