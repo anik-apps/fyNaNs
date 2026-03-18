@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_db
-from src.core.rate_limit import rate_limit_login
+from src.core.rate_limit import rate_limit_login, rate_limit_mfa_verify, rate_limit_password_reset
 from src.core.security import create_mfa_pending_token
 from src.models.refresh_token import RefreshToken
 from src.models.user import User
@@ -264,6 +264,7 @@ async def mfa_verify(
     http_request: Request,
     response: Response,
     db: AsyncSession = Depends(get_db),
+    _: None = Depends(rate_limit_mfa_verify),
 ):
     """Verify MFA code during login flow or for sensitive action confirmation."""
     from src.core.security import (
@@ -329,6 +330,7 @@ async def mfa_verify(
 async def password_reset_request(
     request: PasswordResetRequest,
     db: AsyncSession = Depends(get_db),
+    _: None = Depends(rate_limit_password_reset),
 ):
     from src.core.security import create_password_reset_token
     from src.services.email import send_password_reset_email

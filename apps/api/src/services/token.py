@@ -91,6 +91,18 @@ async def rotate_refresh_token(
 
     # Create new token pair
     access_token, new_refresh = await create_token_pair(db, user_id, device_info)
+
+    # Clean up old rotated tokens (rotated_at older than 2x grace window)
+    cleanup_cutoff = now - timedelta(seconds=GRACE_WINDOW_SECONDS * 2)
+    await db.execute(
+        delete(RefreshToken).where(
+            and_(
+                RefreshToken.rotated_at.isnot(None),
+                RefreshToken.rotated_at < cleanup_cutoff,
+            )
+        )
+    )
+
     return access_token, new_refresh, user_id
 
 
