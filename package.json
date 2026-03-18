@@ -1,0 +1,10 @@
+{
+  "name": "fynans",
+  "private": true,
+  "scripts": {
+    "dev:web": "pnpm --filter @fynans/web dev",
+    "dev:mobile": "pnpm --filter @fynans/mobile start",
+    "build:web": "pnpm --filter @fynans/web build",
+    "generate:api-client": "./scripts/generate-api-client.sh"
+  }
+}
