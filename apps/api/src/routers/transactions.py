@@ -14,6 +14,8 @@ from src.schemas.transaction import (
     TransactionCreateRequest,
     TransactionListResponse,
     TransactionResponse,
+    TransactionSummaryItem,
+    TransactionSummaryResponse,
     TransactionUpdateRequest,
 )
 from src.services.transaction import (
@@ -71,6 +73,84 @@ async def list_transactions_endpoint(
     return TransactionListResponse(
         items=[_txn_to_response(t) for t in transactions],
         next_cursor=next_cursor,
+    )
+
+
+@router.get("/summary", response_model=TransactionSummaryResponse)
+async def transaction_summary(
+    period_start: date = Query(...),
+    period_end: date = Query(...),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Spending by category for a period."""
+    from decimal import Decimal as D
+    from sqlalchemy import func, case
+    from src.models.category import Category
+
+    base_filter = [
+        Transaction.user_id == user.id,
+        Transaction.date >= period_start,
+        Transaction.date <= period_end,
+    ]
+
+    # Query transactions grouped by category
+    result = await db.execute(
+        select(
+            Transaction.category_id,
+            func.sum(Transaction.amount).label("total"),
+            func.count().label("count"),
+        )
+        .where(*base_filter)
+        .group_by(Transaction.category_id)
+    )
+    rows = result.all()
+
+    items = []
+    for row in rows:
+        category_id = row.category_id
+        total = D(str(row.total))
+        count = row.count
+
+        # Get category name
+        cat_name = None
+        if category_id:
+            cat_result = await db.execute(
+                select(Category).where(Category.id == category_id)
+            )
+            cat = cat_result.scalar_one_or_none()
+            if cat:
+                cat_name = cat.name
+
+        items.append(TransactionSummaryItem(
+            category_id=category_id,
+            category_name=cat_name,
+            total=str(total),
+            count=count,
+        ))
+
+    # Calculate total spending (positive amounts) and income (negative amounts) separately
+    totals_result = await db.execute(
+        select(
+            func.coalesce(
+                func.sum(case((Transaction.amount > 0, Transaction.amount))),
+                D("0"),
+            ).label("total_spending"),
+            func.coalesce(
+                func.sum(case((Transaction.amount < 0, func.abs(Transaction.amount)))),
+                D("0"),
+            ).label("total_income"),
+        )
+        .where(*base_filter)
+    )
+    totals = totals_result.one()
+
+    return TransactionSummaryResponse(
+        period_start=period_start,
+        period_end=period_end,
+        items=items,
+        total_spending=f"{D(str(totals.total_spending)):.2f}",
+        total_income=f"{D(str(totals.total_income)):.2f}",
     )
 
 
