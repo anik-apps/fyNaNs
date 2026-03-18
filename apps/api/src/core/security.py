@@ -1,4 +1,17 @@
+import base64
+import os
+import uuid
+from datetime import datetime, timedelta, timezone
+
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from jose import JWTError, jwt
 from passlib.context import CryptContext
+
+from src.core.config import settings
+
+# --- Password Hashing ---
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=12)
 
@@ -11,15 +24,59 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 
+# --- JWT Tokens ---
+
+
+def create_access_token(user_id: uuid.UUID) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
+    payload = {"sub": str(user_id), "exp": expire, "type": "access"}
+    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+
+
+def create_mfa_pending_token(user_id: uuid.UUID) -> str:
+    """Short-lived token (5 min) issued after password auth, before MFA verification."""
+    expire = datetime.now(timezone.utc) + timedelta(minutes=5)
+    payload = {"sub": str(user_id), "exp": expire, "type": "mfa_pending"}
+    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+
+
+def decode_mfa_pending_token(token: str) -> dict:
+    try:
+        payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+        if payload.get("type") != "mfa_pending":
+            raise JWTError("Invalid token type — expected mfa_pending")
+        return payload
+    except JWTError as e:
+        raise ValueError(f"Invalid MFA token: {e}") from e
+
+
+def decode_access_token(token: str) -> dict:
+    try:
+        payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+        if payload.get("type") != "access":
+            raise JWTError("Invalid token type")
+        return payload
+    except JWTError as e:
+        raise ValueError(f"Invalid token: {e}") from e
+
+
+def create_password_reset_token(user_id: uuid.UUID) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(hours=1)
+    payload = {"sub": str(user_id), "exp": expire, "type": "password_reset"}
+    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+
+
+def decode_password_reset_token(token: str) -> dict:
+    try:
+        payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+        if payload.get("type") != "password_reset":
+            raise JWTError("Invalid token type")
+        return payload
+    except JWTError as e:
+        raise ValueError(f"Invalid token: {e}") from e
+
+
 # --- AES Encryption (for mfa_secret, Plaid tokens) ---
-import base64
-import os
-
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-
-from src.core.config import settings
 
 _ENCRYPTION_KEY: bytes | None = None
 
