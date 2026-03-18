@@ -4,12 +4,12 @@ from httpx import AsyncClient
 
 @pytest.mark.asyncio
 async def test_login_success(client: AsyncClient):
-    await client.post("/auth/register", json={
+    await client.post("/api/auth/register", json={
         "email": "login@example.com",
         "password": "SecurePass123!",
         "name": "Login User",
     })
-    response = await client.post("/auth/login", json={
+    response = await client.post("/api/auth/login", json={
         "email": "login@example.com",
         "password": "SecurePass123!",
     })
@@ -22,12 +22,12 @@ async def test_login_success(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_login_wrong_password(client: AsyncClient):
-    await client.post("/auth/register", json={
+    await client.post("/api/auth/register", json={
         "email": "wrong@example.com",
         "password": "SecurePass123!",
         "name": "User",
     })
-    response = await client.post("/auth/login", json={
+    response = await client.post("/api/auth/login", json={
         "email": "wrong@example.com",
         "password": "WrongPassword!",
     })
@@ -36,7 +36,7 @@ async def test_login_wrong_password(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_login_nonexistent_user(client: AsyncClient):
-    response = await client.post("/auth/login", json={
+    response = await client.post("/api/auth/login", json={
         "email": "nobody@example.com",
         "password": "whatever",
     })

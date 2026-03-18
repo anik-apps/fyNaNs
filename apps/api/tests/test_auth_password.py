@@ -4,10 +4,10 @@ from httpx import AsyncClient
 
 @pytest.mark.asyncio
 async def test_password_reset_request(client: AsyncClient):
-    await client.post("/auth/register", json={
+    await client.post("/api/auth/register", json={
         "email": "reset@example.com", "password": "OldPass123!", "name": "Reset User"
     })
-    response = await client.post("/auth/password/reset-request", json={
+    response = await client.post("/api/auth/password/reset-request", json={
         "email": "reset@example.com"
     })
     # Should always return 200 (don't reveal if email exists)
@@ -16,7 +16,7 @@ async def test_password_reset_request(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_password_reset_request_nonexistent(client: AsyncClient):
-    response = await client.post("/auth/password/reset-request", json={
+    response = await client.post("/api/auth/password/reset-request", json={
         "email": "nonexistent@example.com"
     })
     # Should still return 200 to not reveal if email exists
@@ -25,7 +25,7 @@ async def test_password_reset_request_nonexistent(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_password_reset_invalid_token(client: AsyncClient):
-    response = await client.post("/auth/password/reset", json={
+    response = await client.post("/api/auth/password/reset", json={
         "token": "invalid-token",
         "new_password": "NewSecurePass123!"
     })

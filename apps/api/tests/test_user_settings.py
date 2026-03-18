@@ -4,10 +4,10 @@ from httpx import AsyncClient
 
 @pytest.fixture
 async def auth_headers(client: AsyncClient) -> dict:
-    await client.post("/auth/register", json={
+    await client.post("/api/auth/register", json={
         "email": "settings@example.com", "password": "SecurePass123!", "name": "Settings User"
     })
-    login = await client.post("/auth/login", json={
+    login = await client.post("/api/auth/login", json={
         "email": "settings@example.com", "password": "SecurePass123!"
     })
     token = login.json()["access_token"]
@@ -16,7 +16,7 @@ async def auth_headers(client: AsyncClient) -> dict:
 
 @pytest.mark.asyncio
 async def test_get_settings(client: AsyncClient, auth_headers: dict):
-    response = await client.get("/user/settings", headers=auth_headers)
+    response = await client.get("/api/user/settings", headers=auth_headers)
     assert response.status_code == 200
     assert response.json()["theme"] == "system"
     assert response.json()["notify_bill_reminders"] is True
@@ -24,7 +24,7 @@ async def test_get_settings(client: AsyncClient, auth_headers: dict):
 
 @pytest.mark.asyncio
 async def test_update_settings(client: AsyncClient, auth_headers: dict):
-    response = await client.put("/user/settings", headers=auth_headers, json={
+    response = await client.put("/api/user/settings", headers=auth_headers, json={
         "theme": "dark",
         "notify_push": False,
     })
