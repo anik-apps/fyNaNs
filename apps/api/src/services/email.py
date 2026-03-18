@@ -5,10 +5,11 @@ from src.core.config import settings
 
 def send_password_reset_email(to_email: str, reset_token: str) -> None:
     if not settings.resend_api_key:
-        # Dev mode: log instead of sending
-        print(
-            f"[DEV] Password reset link: {settings.app_url}/reset-password?token={reset_token}"
-        )
+        # Dev mode: log that email would be sent, without exposing the token
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.info("[DEV] Password reset email would be sent to %s", to_email)
         return
 
     resend.api_key = settings.resend_api_key
