@@ -307,3 +307,71 @@ async def sync_transactions(
     await db.commit()
 
     return {"added": added_count, "modified": modified_count, "removed": removed_count}
+
+
+# --- Liabilities Sync ---
+
+from plaid.model.liabilities_get_request import LiabilitiesGetRequest
+
+
+async def sync_liabilities(
+    db: AsyncSession, plaid_item: PlaidItem
+) -> dict[str, int]:
+    """Sync credit card liabilities for a PlaidItem.
+
+    Updates account balances and returns bill-relevant data.
+    Only called for PlaidItems that have credit card accounts.
+    """
+    client = _get_plaid_client()
+    access_token = decrypt_value(plaid_item.access_token)
+
+    liab_request = LiabilitiesGetRequest(access_token=access_token)
+    response = client.liabilities_get(liab_request)
+
+    credit_synced = 0
+    liability_data = []
+
+    if response.liabilities.credit:
+        for credit in response.liabilities.credit:
+            # Find matching account
+            result = await db.execute(
+                select(Account).where(
+                    Account.plaid_account_id == credit.account_id,
+                    Account.user_id == plaid_item.user_id,
+                )
+            )
+            account = result.scalar_one_or_none()
+            if not account:
+                continue
+
+            # Update account balance with statement balance
+            if credit.last_statement_balance is not None:
+                account.balance = credit.last_statement_balance
+
+            liability_data.append({
+                "account_id": account.id,
+                "plaid_account_id": credit.account_id,
+                "statement_balance": credit.last_statement_balance,
+                "minimum_payment": credit.minimum_payment_amount,
+                "next_due_date": str(credit.next_payment_due_date) if credit.next_payment_due_date else None,
+            })
+
+            credit_synced += 1
+
+    await db.commit()
+
+    return {
+        "credit_accounts_synced": credit_synced,
+        "liability_data": liability_data,
+    }
+
+
+async def has_credit_accounts(db: AsyncSession, plaid_item: PlaidItem) -> bool:
+    """Check if a PlaidItem has any credit card accounts (used for quota optimization)."""
+    result = await db.execute(
+        select(Account).where(
+            Account.plaid_item_id == plaid_item.id,
+            Account.type == "credit",
+        )
+    )
+    return result.scalar_one_or_none() is not None

@@ -266,3 +266,57 @@ async def test_sync_transactions_removes_deleted(mock_client, db_session: AsyncS
         select(Transaction).where(Transaction.plaid_txn_id == "txn-to-remove")
     )
     assert result.scalar_one_or_none() is None
+
+
+@pytest.mark.asyncio
+@patch("src.services.plaid._get_plaid_client")
+async def test_sync_liabilities(mock_client, db_session: AsyncSession):
+    from src.models.user import User
+    from src.models.plaid_item import PlaidItem
+    from src.models.account import Account
+    from src.core.security import encrypt_value
+    from src.services.plaid import sync_liabilities
+
+    user = User(email="liab@example.com", name="Liab User", password_hash="fake")
+    db_session.add(user)
+    await db_session.flush()
+
+    plaid_item = PlaidItem(
+        user_id=user.id,
+        access_token=encrypt_value("access-token"),
+        item_id="item-liab-123",
+        institution_name="Credit Bank",
+        status="active",
+    )
+    db_session.add(plaid_item)
+    await db_session.flush()
+
+    account = Account(
+        user_id=user.id,
+        plaid_item_id=plaid_item.id,
+        plaid_account_id="acct-credit-001",
+        institution_name="Credit Bank",
+        name="Visa Card",
+        type="credit",
+        balance=500,
+        is_manual=False,
+    )
+    db_session.add(account)
+    await db_session.commit()
+
+    # Mock liabilities response
+    mock_api = MagicMock()
+    mock_credit = MagicMock()
+    mock_credit.account_id = "acct-credit-001"
+    mock_credit.last_statement_balance = 450.00
+    mock_credit.minimum_payment_amount = 25.00
+    mock_credit.next_payment_due_date = "2026-04-01"
+
+    mock_liab_resp = MagicMock()
+    mock_liab_resp.liabilities.credit = [mock_credit]
+    mock_api.liabilities_get.return_value = mock_liab_resp
+
+    mock_client.return_value = mock_api
+
+    result = await sync_liabilities(db_session, plaid_item)
+    assert result["credit_accounts_synced"] == 1
