@@ -22,7 +22,7 @@ async def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired access token",
-        )
+        ) from None
 
     user_id = uuid.UUID(payload["sub"])
     result = await db.execute(select(User).where(User.id == user_id))

@@ -1,7 +1,7 @@
 import hashlib
 import secrets
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,7 +29,7 @@ async def create_token_pair(
         user_id=user_id,
         token_hash=_hash_token(raw_refresh),
         device_info=device_info,
-        expires_at=datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days),
+        expires_at=datetime.now(UTC) + timedelta(days=settings.refresh_token_expire_days),
     )
     db.add(refresh_token)
     await db.commit()
@@ -51,12 +51,12 @@ async def rotate_refresh_token(
     )
     existing = result.scalar_one_or_none()
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     if not existing:
         raise ValueError("Invalid refresh token")
 
-    if existing.expires_at.replace(tzinfo=timezone.utc) < now:
+    if existing.expires_at.replace(tzinfo=UTC) < now:
         await db.delete(existing)
         await db.commit()
         raise ValueError("Refresh token expired")
@@ -64,7 +64,7 @@ async def rotate_refresh_token(
     user_id = existing.user_id
 
     # Check if this token was already rotated (grace window check).
-    if existing.expires_at.replace(tzinfo=timezone.utc) <= now + timedelta(
+    if existing.expires_at.replace(tzinfo=UTC) <= now + timedelta(
         seconds=GRACE_WINDOW_SECONDS
     ):
         raise ValueError("Token already rotated. Use the new refresh token.")
