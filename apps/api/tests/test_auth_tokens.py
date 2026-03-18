@@ -46,3 +46,48 @@ async def test_create_and_rotate_token_pair(db_session: AsyncSession):
     # Old token should now be in grace window (not fully valid)
     with pytest.raises(ValueError, match="already rotated"):
         await rotate_refresh_token(db_session, refresh, "test-device")
+
+
+# --- Endpoint tests ---
+from httpx import AsyncClient
+
+
+@pytest.mark.asyncio
+async def test_refresh_via_body(client: AsyncClient):
+    """Mobile flow: refresh token sent in request body."""
+    await client.post("/auth/register", json={
+        "email": "refresh@example.com", "password": "SecurePass123!", "name": "User"
+    })
+    login_resp = await client.post("/auth/login", json={
+        "email": "refresh@example.com", "password": "SecurePass123!"
+    })
+    # Get refresh token from cookie
+    refresh_cookie = login_resp.cookies.get("refresh_token")
+
+    response = await client.post("/auth/refresh", json={"refresh_token": refresh_cookie})
+    assert response.status_code == 200
+    assert "access_token" in response.json()
+
+
+@pytest.mark.asyncio
+async def test_refresh_invalid_token(client: AsyncClient):
+    response = await client.post("/auth/refresh", json={"refresh_token": "invalid"})
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_logout_invalidates_token(client: AsyncClient):
+    await client.post("/auth/register", json={
+        "email": "logout@example.com", "password": "SecurePass123!", "name": "User"
+    })
+    login_resp = await client.post("/auth/login", json={
+        "email": "logout@example.com", "password": "SecurePass123!"
+    })
+    refresh_cookie = login_resp.cookies.get("refresh_token")
+
+    # Logout
+    await client.post("/auth/logout", json={"refresh_token": refresh_cookie})
+
+    # Refresh should now fail
+    response = await client.post("/auth/refresh", json={"refresh_token": refresh_cookie})
+    assert response.status_code == 401
