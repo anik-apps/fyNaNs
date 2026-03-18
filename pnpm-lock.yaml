@@ -1,0 +1,17 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .: {}
+
+  apps/mobile: {}
+
+  apps/web: {}
+
+  packages/api-client: {}
+
+  packages/shared-types: {}
