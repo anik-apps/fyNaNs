@@ -375,3 +375,106 @@ async def has_credit_accounts(db: AsyncSession, plaid_item: PlaidItem) -> bool:
         )
     )
     return result.scalar_one_or_none() is not None
+
+
+# --- Webhook Verification ---
+
+import time
+import httpx
+from jose import jwt as jose_jwt
+
+# Cache for Plaid webhook verification keys (TTL: 24 hours per Plaid recommendation)
+_webhook_key_cache: dict[str, tuple[dict, float]] = {}
+WEBHOOK_KEY_CACHE_TTL = 86400  # 24 hours
+
+
+async def verify_plaid_webhook(body: bytes, plaid_verification_header: str | None) -> bool:
+    """Verify Plaid webhook JWT signature.
+
+    Uses cached public keys from Plaid's /webhook_verification_key/get endpoint.
+    Returns True if verification passes or is skipped (dev mode).
+    """
+    if not plaid_verification_header:
+        # In development, Plaid may not send verification header
+        return settings.plaid_env == "sandbox"
+
+    try:
+        # Decode the JWT header to get the key_id
+        unverified_header = jose_jwt.get_unverified_header(plaid_verification_header)
+        key_id = unverified_header.get("kid")
+        if not key_id:
+            return False
+
+        # Fetch or use cached verification key
+        jwk = await _get_webhook_verification_key(key_id)
+        if not jwk:
+            return False
+
+        # Verify the JWT
+        claims = jose_jwt.decode(
+            plaid_verification_header,
+            jwk,
+            algorithms=["ES256"],
+        )
+
+        # Verify the request body hash matches
+        import hashlib
+        body_hash = hashlib.sha256(body).hexdigest()
+        return claims.get("request_body_sha256") == body_hash
+
+    except Exception:
+        # Log error but don't crash -- webhook processing is best-effort
+        return settings.plaid_env == "sandbox"
+
+
+async def _get_webhook_verification_key(key_id: str) -> dict | None:
+    """Fetch Plaid's webhook verification public key, with caching."""
+    now = time.time()
+
+    # Check cache
+    if key_id in _webhook_key_cache:
+        cached_key, cached_at = _webhook_key_cache[key_id]
+        if now - cached_at < WEBHOOK_KEY_CACHE_TTL:
+            return cached_key
+
+    # Fetch from Plaid
+    try:
+        client = _get_plaid_client()
+        from plaid.model.webhook_verification_key_get_request import (
+            WebhookVerificationKeyGetRequest,
+        )
+
+        request = WebhookVerificationKeyGetRequest(key_id=key_id)
+        response = client.webhook_verification_key_get(request)
+        key = response.key
+        _webhook_key_cache[key_id] = (key, now)
+        return key
+    except Exception:
+        return None
+
+
+async def handle_webhook_event(
+    db: AsyncSession, webhook_type: str, webhook_code: str, item_id: str
+) -> None:
+    """Process a Plaid webhook event."""
+    if webhook_type == "TRANSACTIONS" and webhook_code == "SYNC_UPDATES_AVAILABLE":
+        # Find the PlaidItem by item_id
+        result = await db.execute(
+            select(PlaidItem).where(PlaidItem.item_id == item_id)
+        )
+        plaid_item = result.scalar_one_or_none()
+        if plaid_item and plaid_item.status == "active":
+            await sync_transactions(db, plaid_item)
+
+            # Also sync liabilities if credit accounts exist
+            if await has_credit_accounts(db, plaid_item):
+                await sync_liabilities(db, plaid_item)
+
+    elif webhook_type == "ITEM" and webhook_code == "ERROR":
+        result = await db.execute(
+            select(PlaidItem).where(PlaidItem.item_id == item_id)
+        )
+        plaid_item = result.scalar_one_or_none()
+        if plaid_item:
+            plaid_item.status = "error"
+            await db.commit()
