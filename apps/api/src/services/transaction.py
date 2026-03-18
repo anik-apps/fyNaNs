@@ -137,3 +137,153 @@ async def is_duplicate_transaction(
         )
     )
     return result.scalar_one_or_none() is not None
+
+
+# --- Import Functions ---
+
+import csv
+import io
+from datetime import datetime
+
+
+async def import_csv(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    account_id: uuid.UUID,
+    file_content: bytes,
+) -> dict:
+    """Import transactions from CSV file.
+
+    Expected columns: Date, Description, Amount (with optional Merchant, Category, Notes).
+    Deduplicates against existing transactions by (date + amount + description) within 3-day window.
+    """
+    # Verify account belongs to user
+    result = await db.execute(
+        select(Account).where(Account.id == account_id, Account.user_id == user_id)
+    )
+    if not result.scalar_one_or_none():
+        raise TransactionError("Account not found", 404)
+
+    imported = 0
+    skipped = 0
+    errors = []
+
+    try:
+        text = file_content.decode("utf-8")
+    except UnicodeDecodeError:
+        text = file_content.decode("latin-1")
+
+    reader = csv.DictReader(io.StringIO(text))
+
+    for row_num, row in enumerate(reader, start=1):
+        try:
+            # Parse date (try multiple formats)
+            date_str = row.get("Date", "").strip()
+            txn_date = _parse_date(date_str)
+            if not txn_date:
+                errors.append({"row": row_num, "reason": f"Invalid date: {date_str}"})
+                continue
+
+            description = row.get("Description", "").strip()
+            if not description:
+                errors.append({"row": row_num, "reason": "Missing description"})
+                continue
+
+            amount_str = row.get("Amount", "").strip().replace(",", "").replace("$", "")
+            try:
+                amount = Decimal(amount_str)
+            except Exception:
+                errors.append({"row": row_num, "reason": f"Invalid amount: {amount_str}"})
+                continue
+
+            # Check for duplicate
+            if await is_duplicate_transaction(db, user_id, txn_date, amount, description):
+                skipped += 1
+                continue
+
+            txn = Transaction(
+                user_id=user_id,
+                account_id=account_id,
+                amount=amount,
+                date=txn_date,
+                description=description,
+                merchant_name=row.get("Merchant", "").strip() or None,
+                notes=row.get("Notes", "").strip() or None,
+                is_manual=True,
+                is_pending=False,
+            )
+            db.add(txn)
+            imported += 1
+
+        except Exception as e:
+            errors.append({"row": row_num, "reason": str(e)})
+
+    await db.commit()
+    return {"imported": imported, "skipped_duplicates": skipped, "errors": errors}
+
+
+async def import_ofx(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    account_id: uuid.UUID,
+    file_content: bytes,
+) -> dict:
+    """Import transactions from OFX/QFX file."""
+    from ofxparse import OfxParser
+
+    # Verify account belongs to user
+    result = await db.execute(
+        select(Account).where(Account.id == account_id, Account.user_id == user_id)
+    )
+    if not result.scalar_one_or_none():
+        raise TransactionError("Account not found", 404)
+
+    imported = 0
+    skipped = 0
+    errors = []
+
+    try:
+        ofx = OfxParser.parse(io.BytesIO(file_content))
+    except Exception as e:
+        raise TransactionError(f"Failed to parse OFX file: {e}", 400)
+
+    for account_data in ofx.accounts:
+        for row_num, txn_data in enumerate(account_data.statement.transactions, start=1):
+            try:
+                txn_date = txn_data.date.date() if hasattr(txn_data.date, "date") else txn_data.date
+                amount = Decimal(str(txn_data.amount))
+                description = txn_data.memo or txn_data.payee or "Unknown"
+
+                if await is_duplicate_transaction(db, user_id, txn_date, amount, description):
+                    skipped += 1
+                    continue
+
+                txn = Transaction(
+                    user_id=user_id,
+                    account_id=account_id,
+                    amount=amount,
+                    date=txn_date,
+                    description=description,
+                    merchant_name=txn_data.payee if txn_data.payee != description else None,
+                    is_manual=True,
+                    is_pending=False,
+                )
+                db.add(txn)
+                imported += 1
+
+            except Exception as e:
+                errors.append({"row": row_num, "reason": str(e)})
+
+    await db.commit()
+    return {"imported": imported, "skipped_duplicates": skipped, "errors": errors}
+
+
+def _parse_date(date_str: str) -> date | None:
+    """Try multiple date formats."""
+    formats = ["%Y-%m-%d", "%m/%d/%Y", "%m-%d-%Y", "%d/%m/%Y", "%Y/%m/%d"]
+    for fmt in formats:
+        try:
+            return datetime.strptime(date_str, fmt).date()
+        except ValueError:
+            continue
+    return None

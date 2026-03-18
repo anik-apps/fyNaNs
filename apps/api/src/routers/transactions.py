@@ -1,7 +1,7 @@
 import uuid
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +10,7 @@ from src.models.transaction import Transaction
 from src.models.user import User
 from src.routers.deps import get_current_user
 from src.schemas.transaction import (
+    ImportResponse,
     TransactionCreateRequest,
     TransactionListResponse,
     TransactionResponse,
@@ -18,8 +19,12 @@ from src.schemas.transaction import (
 from src.services.transaction import (
     TransactionError,
     create_manual_transaction,
+    import_csv,
+    import_ofx,
     list_transactions,
 )
+
+MAX_IMPORT_SIZE = 5 * 1024 * 1024  # 5MB
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -67,6 +72,32 @@ async def list_transactions_endpoint(
         items=[_txn_to_response(t) for t in transactions],
         next_cursor=next_cursor,
     )
+
+
+@router.post("/import", response_model=ImportResponse)
+async def import_transactions(
+    account_id: uuid.UUID = Query(...),
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload CSV or OFX file (max 5MB). Auto-detects format."""
+    content = await file.read()
+
+    if len(content) > MAX_IMPORT_SIZE:
+        raise HTTPException(status_code=400, detail="File too large (max 5MB)")
+
+    filename = file.filename or ""
+
+    try:
+        if filename.lower().endswith((".ofx", ".qfx")):
+            result = await import_ofx(db, user.id, account_id, content)
+        else:
+            result = await import_csv(db, user.id, account_id, content)
+    except TransactionError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+
+    return ImportResponse(**result)
 
 
 @router.get("/{transaction_id}", response_model=TransactionResponse)
