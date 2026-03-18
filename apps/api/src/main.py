@@ -5,7 +5,7 @@ from starlette.responses import JSONResponse
 
 from src.core.config import settings
 from src.core.rate_limit import rate_limiter
-from src.routers import auth, health, user
+from src.routers import auth, health, plaid, user
 
 app = FastAPI(title="fyNaNs API", version="0.1.0")
 
@@ -40,4 +40,5 @@ api_router = APIRouter(prefix="/api")
 api_router.include_router(health.router)
 api_router.include_router(auth.router)
 api_router.include_router(user.router)
+api_router.include_router(plaid.router)
 app.include_router(api_router)
