@@ -4,7 +4,7 @@ from collections import defaultdict
 from fastapi import HTTPException, Request
 
 # Maximum window any rate limit uses — used for periodic cleanup
-_MAX_WINDOW_SECONDS = 120
+_MAX_WINDOW_SECONDS = 3600  # Longest window used (password reset)
 _CLEANUP_INTERVAL = 100  # run cleanup every N check() calls
 
 
@@ -51,13 +51,33 @@ class InMemoryRateLimiter:
 rate_limiter = InMemoryRateLimiter()
 
 
+def _get_client_ip(request: Request) -> str:
+    """Get real client IP, respecting X-Forwarded-For from trusted proxy (Caddy)."""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
 def rate_limit_login(request: Request) -> None:
     """5 login attempts per minute per IP."""
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _get_client_ip(request)
     rate_limiter.check(f"login:{client_ip}", max_requests=5, window_seconds=60)
 
 
 def rate_limit_general(request: Request) -> None:
     """100 requests per minute per IP."""
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _get_client_ip(request)
     rate_limiter.check(f"general:{client_ip}", max_requests=100, window_seconds=60)
+
+
+def rate_limit_password_reset(request: Request) -> None:
+    """3 password reset requests per IP per hour."""
+    client_ip = _get_client_ip(request)
+    rate_limiter.check(f"pw_reset:{client_ip}", max_requests=3, window_seconds=3600)
+
+
+def rate_limit_mfa_verify(request: Request) -> None:
+    """5 MFA verify attempts per IP per 5 minutes."""
+    client_ip = _get_client_ip(request)
+    rate_limiter.check(f"mfa_verify:{client_ip}", max_requests=5, window_seconds=300)

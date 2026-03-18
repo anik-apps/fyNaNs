@@ -30,7 +30,6 @@ async def test_mfa_full_flow(client: AsyncClient):
     # Confirm MFA with valid TOTP code (this enables it)
     totp = pyotp.TOTP(secret)
     confirm = await client.post("/auth/mfa/confirm", headers=headers, json={
-        "secret": secret,
         "code": totp.now(),
     })
     assert confirm.status_code == 200
