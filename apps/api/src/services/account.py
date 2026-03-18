@@ -1,11 +1,9 @@
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.account import Account
-from src.models.transaction import Transaction
 
 
 class AccountError(Exception):
@@ -65,6 +63,13 @@ async def delete_account(db: AsyncSession, account: Account) -> None:
 
     Bills linked via account_id are nullified (bill remains, loses account link).
     If account is Plaid-linked, does NOT remove the PlaidItem.
+
+    NOTE: Bill nullification is added in Plan 3 Task 7 Step 9 when the Bill model exists.
     """
+    # Nullify bills referencing this account (added by Plan 3)
+    # from src.models.bill import Bill
+    # await db.execute(
+    #     sa_update(Bill).where(Bill.account_id == account.id).values(account_id=None)
+    # )
     await db.delete(account)
     await db.commit()

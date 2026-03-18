@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import select, or_, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.category import Category

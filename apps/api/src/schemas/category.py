@@ -1,6 +1,5 @@
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -9,13 +8,13 @@ class CategoryCreateRequest(BaseModel):
     name: str
     icon: str = "tag"
     color: str = "#6B7280"
-    parent_id: Optional[uuid.UUID] = None
+    parent_id: uuid.UUID | None = None
 
 
 class CategoryUpdateRequest(BaseModel):
-    name: Optional[str] = None
-    icon: Optional[str] = None
-    color: Optional[str] = None
+    name: str | None = None
+    icon: str | None = None
+    color: str | None = None
 
 
 class CategoryResponse(BaseModel):
@@ -23,9 +22,9 @@ class CategoryResponse(BaseModel):
     name: str
     icon: str
     color: str
-    parent_id: Optional[uuid.UUID]
+    parent_id: uuid.UUID | None
     is_system: bool
-    plaid_category: Optional[str]
+    plaid_category: str | None
     created_at: datetime
     updated_at: datetime
 

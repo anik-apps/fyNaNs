@@ -33,7 +33,7 @@ async def create_link(user: User = Depends(get_current_user)):
         result = await create_link_token(user.id)
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create link token: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create link token: {e}") from e
 
 
 @router.post("/exchange-token", response_model=ExchangeTokenResponse)
@@ -53,7 +53,7 @@ async def exchange_token(
             accounts_linked=num_accounts,
         )
     except PlaidServiceError as e:
-        raise HTTPException(status_code=e.status_code, detail=e.message)
+        raise HTTPException(status_code=e.status_code, detail=e.message) from e
 
 
 @router.post("/webhook")
@@ -125,8 +125,9 @@ async def delete_plaid_item(
 
     # Try to revoke access token with Plaid (best effort)
     try:
-        from src.services.plaid import _get_plaid_client, get_decrypted_access_token
         from plaid.model.item_remove_request import ItemRemoveRequest
+
+        from src.services.plaid import _get_plaid_client, get_decrypted_access_token
 
         access_token = await get_decrypted_access_token(plaid_item)
         client = _get_plaid_client()

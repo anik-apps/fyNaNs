@@ -65,7 +65,7 @@ async def create_account(
         )
         return _account_to_response(account)
     except AccountError as e:
-        raise HTTPException(status_code=e.status_code, detail=e.message)
+        raise HTTPException(status_code=e.status_code, detail=e.message) from e
 
 
 @router.put("/{account_id}", response_model=AccountResponse)

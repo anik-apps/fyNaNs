@@ -35,4 +35,6 @@ class Account(BaseModel):
     is_manual: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     plaid_item = relationship("PlaidItem", back_populates="accounts")
-    transactions = relationship("Transaction", back_populates="account", cascade="all, delete-orphan")
+    transactions = relationship(
+        "Transaction", back_populates="account", cascade="all, delete-orphan"
+    )

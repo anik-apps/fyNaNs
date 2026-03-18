@@ -48,7 +48,7 @@ async def create_category_endpoint(
         )
         return category
     except CategoryError as e:
-        raise HTTPException(status_code=e.status_code, detail=e.message)
+        raise HTTPException(status_code=e.status_code, detail=e.message) from e
 
 
 @router.put("/{category_id}", response_model=CategoryResponse)
@@ -100,4 +100,4 @@ async def delete_category_endpoint(
         await delete_category(db, category, user.id)
         return {"detail": "Category deleted"}
     except CategoryError as e:
-        raise HTTPException(status_code=e.status_code, detail=e.message)
+        raise HTTPException(status_code=e.status_code, detail=e.message) from e

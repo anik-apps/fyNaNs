@@ -1,11 +1,13 @@
 import uuid
 from datetime import date
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from sqlalchemy import select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_db
+from src.models.category import Category
 from src.models.transaction import Transaction
 from src.models.user import User
 from src.routers.deps import get_current_user
@@ -84,10 +86,6 @@ async def transaction_summary(
     db: AsyncSession = Depends(get_db),
 ):
     """Spending by category for a period."""
-    from decimal import Decimal as D
-    from sqlalchemy import func, case
-    from src.models.category import Category
-
     base_filter = [
         Transaction.user_id == user.id,
         Transaction.date >= period_start,
@@ -109,7 +107,7 @@ async def transaction_summary(
     items = []
     for row in rows:
         category_id = row.category_id
-        total = D(str(row.total))
+        total = Decimal(str(row.total))
         count = row.count
 
         # Get category name
@@ -134,11 +132,11 @@ async def transaction_summary(
         select(
             func.coalesce(
                 func.sum(case((Transaction.amount > 0, Transaction.amount))),
-                D("0"),
+                Decimal("0"),
             ).label("total_spending"),
             func.coalesce(
                 func.sum(case((Transaction.amount < 0, func.abs(Transaction.amount)))),
-                D("0"),
+                Decimal("0"),
             ).label("total_income"),
         )
         .where(*base_filter)
@@ -149,8 +147,8 @@ async def transaction_summary(
         period_start=period_start,
         period_end=period_end,
         items=items,
-        total_spending=f"{D(str(totals.total_spending)):.2f}",
-        total_income=f"{D(str(totals.total_income)):.2f}",
+        total_spending=f"{Decimal(str(totals.total_spending)):.2f}",
+        total_income=f"{Decimal(str(totals.total_income)):.2f}",
     )
 
 
@@ -175,7 +173,7 @@ async def import_transactions(
         else:
             result = await import_csv(db, user.id, account_id, content)
     except TransactionError as e:
-        raise HTTPException(status_code=e.status_code, detail=e.message)
+        raise HTTPException(status_code=e.status_code, detail=e.message) from e
 
     return ImportResponse(**result)
 
@@ -217,7 +215,7 @@ async def create_transaction(
         )
         return _txn_to_response(txn)
     except TransactionError as e:
-        raise HTTPException(status_code=e.status_code, detail=e.message)
+        raise HTTPException(status_code=e.status_code, detail=e.message) from e
 
 
 @router.put("/{transaction_id}", response_model=TransactionResponse)
@@ -237,10 +235,10 @@ async def update_transaction(
     if not txn:
         raise HTTPException(status_code=404, detail="Transaction not found")
 
-    ALLOWED_UPDATE_FIELDS = {"category_id", "notes", "description", "merchant_name"}
+    allowed_update_fields = {"category_id", "notes", "description", "merchant_name"}
     update_data = request.model_dump(exclude_unset=True)
     for key, value in update_data.items():
-        if key not in ALLOWED_UPDATE_FIELDS:
+        if key not in allowed_update_fields:
             continue
         setattr(txn, key, value)
 

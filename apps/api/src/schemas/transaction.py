@@ -1,9 +1,8 @@
 import uuid
 from datetime import date as date_type
 from datetime import datetime
-from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class TransactionCreateRequest(BaseModel):
@@ -11,18 +10,16 @@ class TransactionCreateRequest(BaseModel):
     amount: str
     date: date_type
     description: str
-    merchant_name: Optional[str] = None
-    category_id: Optional[uuid.UUID] = None
-    notes: Optional[str] = None
+    merchant_name: str | None = None
+    category_id: uuid.UUID | None = None
+    notes: str | None = None
 
 
 class TransactionUpdateRequest(BaseModel):
-    description: Optional[str] = None
-    merchant_name: Optional[str] = None
-    category_id: Optional[uuid.UUID] = None
-    notes: Optional[str] = None
-    amount: Optional[str] = None
-    date: Optional[date_type] = None
+    description: str | None = None
+    merchant_name: str | None = None
+    category_id: uuid.UUID | None = None
+    notes: str | None = None
 
 
 class TransactionResponse(BaseModel):
@@ -31,11 +28,11 @@ class TransactionResponse(BaseModel):
     amount: str
     date: date_type
     description: str
-    merchant_name: Optional[str]
-    category_id: Optional[uuid.UUID]
+    merchant_name: str | None
+    category_id: uuid.UUID | None
     is_pending: bool
     is_manual: bool
-    notes: Optional[str]
+    notes: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -44,12 +41,12 @@ class TransactionResponse(BaseModel):
 
 class TransactionListResponse(BaseModel):
     items: list[TransactionResponse]
-    next_cursor: Optional[str] = None
+    next_cursor: str | None = None
 
 
 class TransactionSummaryItem(BaseModel):
-    category_id: Optional[uuid.UUID]
-    category_name: Optional[str]
+    category_id: uuid.UUID | None
+    category_name: str | None
     total: str
     count: int
 

@@ -1,5 +1,7 @@
+import csv
+import io
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import desc, or_, select
@@ -142,10 +144,6 @@ async def is_duplicate_transaction(
 
 # --- Import Functions ---
 
-import csv
-import io
-from datetime import datetime
-
 
 async def import_csv(
     db: AsyncSession,
@@ -246,7 +244,7 @@ async def import_ofx(
     try:
         ofx = OfxParser.parse(io.BytesIO(file_content))
     except Exception as e:
-        raise TransactionError(f"Failed to parse OFX file: {e}", 400)
+        raise TransactionError(f"Failed to parse OFX file: {e}", 400) from e
 
     for account_data in ofx.accounts:
         for row_num, txn_data in enumerate(account_data.statement.transactions, start=1):

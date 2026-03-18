@@ -87,8 +87,9 @@ async def test_delete_category(client: AsyncClient, auth_headers: dict):
 @pytest.mark.asyncio
 async def test_cannot_delete_system_category(client: AsyncClient, auth_headers: dict, db_session):
     """System categories should not be deletable by users."""
-    from src.models.category import Category
     from sqlalchemy import select
+
+    from src.models.category import Category
 
     result = await db_session.execute(
         select(Category).where(Category.is_system.is_(True)).limit(1)

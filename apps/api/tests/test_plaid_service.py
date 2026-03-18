@@ -1,11 +1,12 @@
 import uuid
+from datetime import UTC
 from unittest.mock import MagicMock, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.security import encrypt_value, decrypt_value
-from src.services.plaid import create_link_token, PlaidServiceError
+from src.core.security import decrypt_value, encrypt_value
+from src.services.plaid import PlaidServiceError, create_link_token
 
 
 @pytest.mark.asyncio
@@ -81,9 +82,9 @@ async def test_exchange_public_token(mock_client, db_session: AsyncSession):
 @pytest.mark.asyncio
 @patch("src.services.plaid._get_plaid_client")
 async def test_exchange_duplicate_item_raises(mock_client, db_session: AsyncSession):
-    from src.models.user import User
-    from src.models.plaid_item import PlaidItem
     from src.core.security import encrypt_value
+    from src.models.plaid_item import PlaidItem
+    from src.models.user import User
     from src.services.plaid import exchange_public_token
 
     user = User(email="plaid2@example.com", name="Plaid User 2", password_hash="fake")
@@ -117,13 +118,14 @@ async def test_exchange_duplicate_item_raises(mock_client, db_session: AsyncSess
 @pytest.mark.asyncio
 @patch("src.services.plaid._get_plaid_client")
 async def test_sync_transactions(mock_client, db_session: AsyncSession):
-    from src.models.user import User
-    from src.models.plaid_item import PlaidItem
-    from src.models.account import Account
-    from src.models.transaction import Transaction
-    from src.core.security import encrypt_value
-    from src.services.plaid import sync_transactions
     from sqlalchemy import select
+
+    from src.core.security import encrypt_value
+    from src.models.account import Account
+    from src.models.plaid_item import PlaidItem
+    from src.models.transaction import Transaction
+    from src.models.user import User
+    from src.services.plaid import sync_transactions
 
     # Setup user, plaid_item, account
     user = User(email="sync@example.com", name="Sync User", password_hash="fake")
@@ -194,13 +196,14 @@ async def test_sync_transactions(mock_client, db_session: AsyncSession):
 @pytest.mark.asyncio
 @patch("src.services.plaid._get_plaid_client")
 async def test_sync_transactions_removes_deleted(mock_client, db_session: AsyncSession):
-    from src.models.user import User
-    from src.models.plaid_item import PlaidItem
-    from src.models.account import Account
-    from src.models.transaction import Transaction
-    from src.core.security import encrypt_value
-    from src.services.plaid import sync_transactions
     from sqlalchemy import select
+
+    from src.core.security import encrypt_value
+    from src.models.account import Account
+    from src.models.plaid_item import PlaidItem
+    from src.models.transaction import Transaction
+    from src.models.user import User
+    from src.services.plaid import sync_transactions
 
     user = User(email="syncrem@example.com", name="Sync Rem", password_hash="fake")
     db_session.add(user)
@@ -271,10 +274,10 @@ async def test_sync_transactions_removes_deleted(mock_client, db_session: AsyncS
 @pytest.mark.asyncio
 @patch("src.services.plaid._get_plaid_client")
 async def test_sync_liabilities(mock_client, db_session: AsyncSession):
-    from src.models.user import User
-    from src.models.plaid_item import PlaidItem
-    from src.models.account import Account
     from src.core.security import encrypt_value
+    from src.models.account import Account
+    from src.models.plaid_item import PlaidItem
+    from src.models.user import User
     from src.services.plaid import sync_liabilities
 
     user = User(email="liab@example.com", name="Liab User", password_hash="fake")
@@ -325,11 +328,12 @@ async def test_sync_liabilities(mock_client, db_session: AsyncSession):
 @pytest.mark.asyncio
 async def test_should_skip_sync_recent_webhook(db_session: AsyncSession):
     """Items that received a webhook in the last 24 hours should skip fallback sync."""
-    from src.models.user import User
-    from src.models.plaid_item import PlaidItem
+    from datetime import datetime, timedelta
+
     from src.core.security import encrypt_value
+    from src.models.plaid_item import PlaidItem
+    from src.models.user import User
     from src.services.plaid import should_sync_item
-    from datetime import datetime, timezone, timedelta
 
     user = User(email="quota@example.com", name="Quota User", password_hash="fake")
     db_session.add(user)
@@ -342,7 +346,7 @@ async def test_should_skip_sync_recent_webhook(db_session: AsyncSession):
         item_id="item-recent",
         institution_name="Recent Bank",
         status="active",
-        last_synced_at=datetime.now(timezone.utc) - timedelta(hours=12),
+        last_synced_at=datetime.now(UTC) - timedelta(hours=12),
     )
     db_session.add(recent_item)
 
@@ -353,7 +357,7 @@ async def test_should_skip_sync_recent_webhook(db_session: AsyncSession):
         item_id="item-stale",
         institution_name="Stale Bank",
         status="active",
-        last_synced_at=datetime.now(timezone.utc) - timedelta(days=4),
+        last_synced_at=datetime.now(UTC) - timedelta(days=4),
     )
     db_session.add(stale_item)
 
@@ -377,9 +381,9 @@ async def test_should_skip_sync_recent_webhook(db_session: AsyncSession):
 @pytest.mark.asyncio
 async def test_error_status_items_skip_sync(db_session: AsyncSession):
     """Items with error/revoked status should not be synced."""
-    from src.models.user import User
-    from src.models.plaid_item import PlaidItem
     from src.core.security import encrypt_value
+    from src.models.plaid_item import PlaidItem
+    from src.models.user import User
     from src.services.plaid import should_sync_item
 
     user = User(email="quota2@example.com", name="Quota2", password_hash="fake")

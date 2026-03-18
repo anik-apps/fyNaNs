@@ -1,22 +1,28 @@
 import asyncio
+import time
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timedelta
+from datetime import date as date_type
 from functools import lru_cache
 
 import plaid
+from jose import jwt as jose_jwt
 from plaid.api import plaid_api
 from plaid.model.country_code import CountryCode
+from plaid.model.item_public_token_exchange_request import ItemPublicTokenExchangeRequest
+from plaid.model.liabilities_get_request import LiabilitiesGetRequest
 from plaid.model.link_token_create_request import LinkTokenCreateRequest
 from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUser
-from plaid.model.item_public_token_exchange_request import ItemPublicTokenExchangeRequest
 from plaid.model.products import Products
+from plaid.model.transactions_sync_request import TransactionsSyncRequest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
-from src.core.security import encrypt_value, decrypt_value
+from src.core.security import decrypt_value, encrypt_value
 from src.models.account import Account
 from src.models.plaid_item import PlaidItem
+from src.models.transaction import Transaction
 
 
 class PlaidServiceError(Exception):
@@ -47,13 +53,13 @@ async def create_link_token(user_id: uuid.UUID) -> dict:
     """Create a Plaid Link token for the frontend."""
     client = _get_plaid_client()
 
-    kwargs = dict(
-        user=LinkTokenCreateRequestUser(client_user_id=str(user_id)),
-        client_name="fyNaNs",
-        products=[Products("transactions")],
-        country_codes=[CountryCode("US")],
-        language="en",
-    )
+    kwargs = {
+        "user": LinkTokenCreateRequestUser(client_user_id=str(user_id)),
+        "client_name": "fyNaNs",
+        "products": [Products("transactions")],
+        "country_codes": [CountryCode("US")],
+        "language": "en",
+    }
     if settings.plaid_webhook_url:
         kwargs["webhook"] = settings.plaid_webhook_url
 
@@ -155,12 +161,6 @@ async def get_decrypted_access_token(plaid_item: PlaidItem) -> str:
 
 
 # --- Transaction Sync ---
-
-from datetime import date as date_type
-
-from plaid.model.transactions_sync_request import TransactionsSyncRequest
-
-from src.models.transaction import Transaction
 
 
 async def _resolve_category_id(
@@ -313,15 +313,13 @@ async def sync_transactions(
 
     # Update cursor and last_synced_at on PlaidItem
     plaid_item.cursor = cursor
-    plaid_item.last_synced_at = datetime.now(timezone.utc)
+    plaid_item.last_synced_at = datetime.now(UTC)
     await db.commit()
 
     return {"added": added_count, "modified": modified_count, "removed": removed_count}
 
 
 # --- Liabilities Sync ---
-
-from plaid.model.liabilities_get_request import LiabilitiesGetRequest
 
 
 async def sync_liabilities(
@@ -363,7 +361,11 @@ async def sync_liabilities(
                 "plaid_account_id": credit.account_id,
                 "statement_balance": credit.last_statement_balance,
                 "minimum_payment": credit.minimum_payment_amount,
-                "next_due_date": str(credit.next_payment_due_date) if credit.next_payment_due_date else None,
+                "next_due_date": (
+                    str(credit.next_payment_due_date)
+                    if credit.next_payment_due_date
+                    else None
+                ),
             })
 
             credit_synced += 1
@@ -382,16 +384,12 @@ async def has_credit_accounts(db: AsyncSession, plaid_item: PlaidItem) -> bool:
         select(Account).where(
             Account.plaid_item_id == plaid_item.id,
             Account.type == "credit",
-        )
+        ).limit(1)
     )
-    return result.scalar_one_or_none() is not None
+    return result.scalars().first() is not None
 
 
 # --- Webhook Verification ---
-
-import time
-import httpx
-from jose import jwt as jose_jwt
 
 # Cache for Plaid webhook verification keys (TTL: 24 hours per Plaid recommendation)
 _webhook_key_cache: dict[str, tuple[dict, float]] = {}
@@ -494,8 +492,6 @@ async def handle_webhook_event(
 
 # --- Plaid API Quota Strategy ---
 
-from datetime import timedelta
-
 # Fallback sync interval: 3 days instead of daily to conserve API quota
 FALLBACK_SYNC_INTERVAL = timedelta(days=3)
 
@@ -517,10 +513,10 @@ def should_sync_item(plaid_item: PlaidItem) -> bool:
     if plaid_item.last_synced_at is None:
         return True  # Never synced
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     last_synced = plaid_item.last_synced_at
     if last_synced.tzinfo is None:
-        last_synced = last_synced.replace(tzinfo=timezone.utc)
+        last_synced = last_synced.replace(tzinfo=UTC)
     time_since_sync = now - last_synced
 
     # Skip if recently synced (webhook likely handled it)

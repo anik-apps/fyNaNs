@@ -2,7 +2,8 @@ import uuid
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, ForeignKey, Index, Numeric, String, Text, desc as sa_desc
+from sqlalchemy import Boolean, Date, ForeignKey, Index, Numeric, String, Text
+from sqlalchemy import desc as sa_desc
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
