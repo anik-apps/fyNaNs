@@ -320,3 +320,81 @@ async def test_sync_liabilities(mock_client, db_session: AsyncSession):
 
     result = await sync_liabilities(db_session, plaid_item)
     assert result["credit_accounts_synced"] == 1
+
+
+@pytest.mark.asyncio
+async def test_should_skip_sync_recent_webhook(db_session: AsyncSession):
+    """Items that received a webhook in the last 24 hours should skip fallback sync."""
+    from src.models.user import User
+    from src.models.plaid_item import PlaidItem
+    from src.core.security import encrypt_value
+    from src.services.plaid import should_sync_item
+    from datetime import datetime, timezone, timedelta
+
+    user = User(email="quota@example.com", name="Quota User", password_hash="fake")
+    db_session.add(user)
+    await db_session.flush()
+
+    # Recently synced item
+    recent_item = PlaidItem(
+        user_id=user.id,
+        access_token=encrypt_value("token"),
+        item_id="item-recent",
+        institution_name="Recent Bank",
+        status="active",
+        last_synced_at=datetime.now(timezone.utc) - timedelta(hours=12),
+    )
+    db_session.add(recent_item)
+
+    # Stale item (not synced in 3+ days)
+    stale_item = PlaidItem(
+        user_id=user.id,
+        access_token=encrypt_value("token2"),
+        item_id="item-stale",
+        institution_name="Stale Bank",
+        status="active",
+        last_synced_at=datetime.now(timezone.utc) - timedelta(days=4),
+    )
+    db_session.add(stale_item)
+
+    # Never synced item
+    never_item = PlaidItem(
+        user_id=user.id,
+        access_token=encrypt_value("token3"),
+        item_id="item-never",
+        institution_name="Never Bank",
+        status="active",
+        last_synced_at=None,
+    )
+    db_session.add(never_item)
+    await db_session.commit()
+
+    assert should_sync_item(recent_item) is False  # Synced <24h ago
+    assert should_sync_item(stale_item) is True    # Synced >3 days ago
+    assert should_sync_item(never_item) is True    # Never synced
+
+
+@pytest.mark.asyncio
+async def test_error_status_items_skip_sync(db_session: AsyncSession):
+    """Items with error/revoked status should not be synced."""
+    from src.models.user import User
+    from src.models.plaid_item import PlaidItem
+    from src.core.security import encrypt_value
+    from src.services.plaid import should_sync_item
+
+    user = User(email="quota2@example.com", name="Quota2", password_hash="fake")
+    db_session.add(user)
+    await db_session.flush()
+
+    error_item = PlaidItem(
+        user_id=user.id,
+        access_token=encrypt_value("token"),
+        item_id="item-error",
+        institution_name="Error Bank",
+        status="error",
+        last_synced_at=None,
+    )
+    db_session.add(error_item)
+    await db_session.commit()
+
+    assert should_sync_item(error_item) is False

@@ -478,3 +478,48 @@ async def handle_webhook_event(
         if plaid_item:
             plaid_item.status = "error"
             await db.commit()
+
+
+# --- Plaid API Quota Strategy ---
+
+from datetime import timedelta
+
+# Fallback sync interval: 3 days instead of daily to conserve API quota
+FALLBACK_SYNC_INTERVAL = timedelta(days=3)
+
+# Skip fallback sync if webhook-driven sync happened within this window
+WEBHOOK_RECENT_THRESHOLD = timedelta(hours=24)
+
+
+def should_sync_item(plaid_item: PlaidItem) -> bool:
+    """Determine if a PlaidItem should be synced in the fallback job.
+
+    Quota strategy:
+    - Skip items with error/revoked status
+    - Skip items that received a webhook-driven sync in the last 24 hours
+    - Only sync items that haven't been synced in 3+ days (or never synced)
+    """
+    if plaid_item.status != "active":
+        return False
+
+    if plaid_item.last_synced_at is None:
+        return True  # Never synced
+
+    now = datetime.now(timezone.utc)
+    time_since_sync = now - plaid_item.last_synced_at
+
+    # Skip if recently synced (webhook likely handled it)
+    if time_since_sync < WEBHOOK_RECENT_THRESHOLD:
+        return False
+
+    # Only sync if stale (3+ days)
+    return time_since_sync >= FALLBACK_SYNC_INTERVAL
+
+
+async def get_items_needing_sync(db: AsyncSession) -> list[PlaidItem]:
+    """Get all active PlaidItems that need fallback sync."""
+    result = await db.execute(
+        select(PlaidItem).where(PlaidItem.status == "active")
+    )
+    all_items = result.scalars().all()
+    return [item for item in all_items if should_sync_item(item)]
