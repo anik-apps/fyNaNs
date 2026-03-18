@@ -33,6 +33,11 @@ async def setup_test_db():
 @pytest_asyncio.fixture(autouse=True)
 async def clean_db():
     """Truncate all tables between tests for isolation."""
+    # Reset rate limiter state before each test
+    from src.core.rate_limit import rate_limiter
+
+    rate_limiter._requests.clear()
+
     yield
     async with test_engine.begin() as conn:
         for table in reversed(Base.metadata.sorted_tables):

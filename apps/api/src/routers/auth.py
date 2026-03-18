@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_db
+from src.core.rate_limit import rate_limit_login
 from src.core.security import create_mfa_pending_token
 from src.models.refresh_token import RefreshToken
 from src.models.user import User
@@ -46,6 +47,7 @@ async def login(
     http_request: Request,
     response: Response,
     db: AsyncSession = Depends(get_db),
+    _: None = Depends(rate_limit_login),
 ):
     try:
         user = await authenticate_user(db, request.email, request.password)
