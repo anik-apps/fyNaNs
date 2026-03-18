@@ -12,6 +12,7 @@ class User(BaseModel):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     mfa_secret: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    pending_mfa_secret: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     oauth_accounts = relationship("OAuthAccount", back_populates="user", cascade="all, delete")
     settings = relationship(

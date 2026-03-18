@@ -1,4 +1,5 @@
 import uuid
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -29,7 +30,7 @@ class SettingsResponse(BaseModel):
 
 
 class SettingsUpdateRequest(BaseModel):
-    theme: str | None = None
+    theme: Literal["light", "dark", "system"] | None = None
     notify_bill_reminders: bool | None = None
     notify_budget_alerts: bool | None = None
     notify_email: bool | None = None

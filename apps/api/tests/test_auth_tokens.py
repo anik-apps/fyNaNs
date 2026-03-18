@@ -44,10 +44,9 @@ async def test_create_and_rotate_token_pair(db_session: AsyncSession):
     assert new_access is not None
     assert new_refresh != refresh
 
-    # Old token should now be in grace window (not fully valid)
+    # Old token should now be in grace window (rotated_at is set)
     with pytest.raises(ValueError, match="already rotated"):
         await rotate_refresh_token(db_session, refresh, "test-device")
-
 
 
 # --- Endpoint tests ---

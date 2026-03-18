@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 30
-    encryption_master_secret: str = ""
+    encryption_master_secret: str
     google_client_id: str = ""
     google_client_secret: str = ""
     apple_client_id: str = ""

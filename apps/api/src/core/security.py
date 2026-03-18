@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import os
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -60,9 +61,17 @@ def decode_access_token(token: str) -> dict:
         raise ValueError(f"Invalid token: {e}") from e
 
 
-def create_password_reset_token(user_id: uuid.UUID) -> str:
+def create_password_reset_token(user_id: uuid.UUID, password_hash: str) -> str:
     expire = datetime.now(UTC) + timedelta(hours=1)
-    payload = {"sub": str(user_id), "exp": expire, "type": "password_reset"}
+    # Include a hash of the current password_hash so the token is invalidated
+    # once the password is changed (prevents token reuse).
+    pw_fingerprint = hashlib.sha256(password_hash.encode()).hexdigest()[:16]
+    payload = {
+        "sub": str(user_id),
+        "exp": expire,
+        "type": "password_reset",
+        "pwh": pw_fingerprint,
+    }
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 

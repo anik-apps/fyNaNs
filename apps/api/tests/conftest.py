@@ -37,10 +37,11 @@ async def clean_db():
 
     rate_limiter._requests.clear()
 
-    yield
+    # Truncate BEFORE the test runs so each test starts with a clean slate
     async with test_engine.begin() as conn:
         for table in reversed(Base.metadata.sorted_tables):
             await conn.execute(table.delete())
+    yield
 
 
 async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
