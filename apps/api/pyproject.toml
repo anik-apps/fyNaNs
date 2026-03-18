@@ -18,10 +18,11 @@ httpx = "^0.28"
 resend = "^2.0"
 email-validator = "^2.0"
 cryptography = "^44.0"
+bcrypt = ">=4.0,<5.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"
-pytest-asyncio = "^0.24"
+pytest-asyncio = ">=0.25"
 httpx = "^0.28"
 ruff = "^0.8"
 factory-boy = "^3.3"
@@ -33,4 +34,5 @@ build-backend = "poetry.core.masonry.api"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]

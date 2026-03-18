@@ -1,6 +1,7 @@
 from collections.abc import AsyncGenerator
 
 import pytest
+import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
@@ -18,7 +19,7 @@ test_session_factory = async_sessionmaker(
 )
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest_asyncio.fixture(scope="session", autouse=True)
 async def setup_test_db():
     """Create all tables at the start of the test session, drop at the end."""
     async with test_engine.begin() as conn:
@@ -29,7 +30,7 @@ async def setup_test_db():
     await test_engine.dispose()
 
 
-@pytest.fixture(autouse=True)
+@pytest_asyncio.fixture(autouse=True)
 async def clean_db():
     """Truncate all tables between tests for isolation."""
     yield
@@ -46,14 +47,14 @@ async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
 app.dependency_overrides[get_db] = override_get_db
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def client() -> AsyncGenerator[AsyncClient, None]:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def db_session() -> AsyncGenerator[AsyncSession, None]:
     async with test_session_factory() as session:
         yield session
