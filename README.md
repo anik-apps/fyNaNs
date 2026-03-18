@@ -41,25 +41,40 @@ fyNaNs/
 │   │   │   │   ├── oauth_account.py  # OAuth provider links (Google, Apple)
 │   │   │   │   ├── user_settings.py  # Theme, notification preferences
 │   │   │   │   ├── refresh_token.py  # JWT refresh tokens with rotation tracking (sessions)
-│   │   │   │   └── category.py       # Hierarchical transaction categories (system + custom)
+│   │   │   │   ├── category.py       # Hierarchical transaction categories (system + custom)
+│   │   │   │   ├── plaid_item.py     # Plaid bank link with encrypted access token + sync cursor
+│   │   │   │   ├── account.py        # Bank accounts (Plaid-linked + manual)
+│   │   │   │   └── transaction.py    # Financial transactions with Plaid dedup + query indexes
 │   │   │   ├── schemas/
 │   │   │   │   ├── auth.py           # Auth request/response models (register, login, MFA, tokens)
 │   │   │   │   ├── user.py           # Profile and settings request/response models
-│   │   │   │   └── common.py         # Shared schemas (error responses)
+│   │   │   │   ├── common.py         # Shared schemas (error responses)
+│   │   │   │   ├── plaid.py          # Plaid link/exchange request/response models
+│   │   │   │   ├── account.py        # Account CRUD request/response models
+│   │   │   │   ├── transaction.py    # Transaction CRUD, import, summary models
+│   │   │   │   └── category.py       # Category CRUD request/response models
 │   │   │   ├── services/
 │   │   │   │   ├── auth.py           # Registration, login, password validation
 │   │   │   │   ├── token.py          # JWT creation, refresh token rotation with grace window
 │   │   │   │   ├── oauth.py          # Google OAuth token verification
-│   │   │   │   ├── mfa.py            # TOTP secret generation and verification
-│   │   │   │   └── email.py          # Password reset emails via Resend
+│   │   │   │   ├── mfa.py           # TOTP secret generation and verification
+│   │   │   │   ├── email.py          # Password reset emails via Resend
+│   │   │   │   ├── plaid.py          # Plaid API: link, sync, liabilities, webhooks, quota strategy
+│   │   │   │   ├── account.py        # Account CRUD with Plaid-to-manual conversion
+│   │   │   │   ├── transaction.py    # Transaction CRUD, CSV/OFX import with deduplication
+│   │   │   │   └── category.py       # Category CRUD with system category protection
 │   │   │   ├── routers/
-│   │   │   │   ├── auth.py           # /auth/* endpoints (register, login, OAuth, MFA, sessions)
-│   │   │   │   ├── user.py           # /user/* endpoints (profile, settings)
-│   │   │   │   ├── health.py         # GET /health (DB connectivity check)
+│   │   │   │   ├── auth.py           # /api/auth/* (register, login, OAuth, MFA, sessions)
+│   │   │   │   ├── user.py           # /api/user/* (profile, settings)
+│   │   │   │   ├── health.py         # GET /api/health (DB connectivity check)
+│   │   │   │   ├── plaid.py          # /api/plaid/* (link, exchange, webhook, items)
+│   │   │   │   ├── accounts.py       # /api/accounts/* (CRUD, balance)
+│   │   │   │   ├── transactions.py   # /api/transactions/* (CRUD, import, summary)
+│   │   │   │   ├── categories.py     # /api/categories/* (CRUD)
 │   │   │   │   └── deps.py           # FastAPI dependencies (get_current_user, get_db)
 │   │   │   └── jobs/                 # Background jobs (APScheduler) — coming in Plan 3
 │   │   ├── migrations/               # Alembic async migrations
-│   │   └── tests/                    # 33 pytest tests (auth flows, tokens, rate limiting, profile)
+│   │   └── tests/                    # 73 pytest tests (auth, Plaid, accounts, transactions, categories)
 │   ├── web/                          # Next.js frontend — coming in Plan 5
 │   └── mobile/                       # React Native (Expo) — coming in Plan 6
 ├── packages/
