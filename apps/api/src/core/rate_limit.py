@@ -1,3 +1,4 @@
+import os
 import time
 from collections import defaultdict
 
@@ -59,10 +60,16 @@ def _get_client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+try:
+    LOGIN_RATE_LIMIT = max(1, int(os.getenv("LOGIN_RATE_LIMIT", "5")))
+except ValueError:
+    LOGIN_RATE_LIMIT = 5
+
+
 def rate_limit_login(request: Request) -> None:
-    """5 login attempts per minute per IP."""
+    """Login attempts per minute per IP. Configurable via LOGIN_RATE_LIMIT env var."""
     client_ip = _get_client_ip(request)
-    rate_limiter.check(f"login:{client_ip}", max_requests=5, window_seconds=60)
+    rate_limiter.check(f"login:{client_ip}", max_requests=LOGIN_RATE_LIMIT, window_seconds=60)
 
 
 def rate_limit_general(request: Request) -> None:
