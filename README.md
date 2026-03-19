@@ -58,23 +58,35 @@ fyNaNs/
 │   │   │   │   ├── token.py          # JWT creation, refresh token rotation with grace window
 │   │   │   │   ├── oauth.py          # Google OAuth token verification
 │   │   │   │   ├── mfa.py           # TOTP secret generation and verification
-│   │   │   │   ├── email.py          # Password reset emails via Resend
+│   │   │   │   ├── email.py          # Password reset + export emails via Resend
 │   │   │   │   ├── plaid.py          # Plaid API: link, sync, liabilities, webhooks, quota strategy
-│   │   │   │   ├── account.py        # Account CRUD with Plaid-to-manual conversion
+│   │   │   │   ├── account.py        # Account CRUD with Plaid-to-manual conversion + bill nullification
 │   │   │   │   ├── transaction.py    # Transaction CRUD, CSV/OFX import with deduplication
-│   │   │   │   └── category.py       # Category CRUD with system category protection
+│   │   │   │   ├── category.py       # Category CRUD with system category protection
+│   │   │   │   ├── budget.py         # Budget CRUD with computed spend per period
+│   │   │   │   ├── bill.py           # Bill CRUD with auto-advance to next future due date
+│   │   │   │   ├── notification.py   # Notification dedup, push via Expo Push API
+│   │   │   │   └── export.py         # User data export as ZIP of JSON files
 │   │   │   ├── routers/
 │   │   │   │   ├── auth.py           # /api/auth/* (register, login, OAuth, MFA, sessions)
-│   │   │   │   ├── user.py           # /api/user/* (profile, settings)
+│   │   │   │   ├── user.py           # /api/user/* (profile, settings, export, account deletion)
 │   │   │   │   ├── health.py         # GET /api/health (DB connectivity check)
 │   │   │   │   ├── plaid.py          # /api/plaid/* (link, exchange, webhook, items)
 │   │   │   │   ├── accounts.py       # /api/accounts/* (CRUD, balance)
 │   │   │   │   ├── transactions.py   # /api/transactions/* (CRUD, import, summary)
 │   │   │   │   ├── categories.py     # /api/categories/* (CRUD)
+│   │   │   │   ├── budgets.py        # /api/budgets/* (CRUD, overview with % spent)
+│   │   │   │   ├── bills.py          # /api/bills/* (CRUD, upcoming)
+│   │   │   │   ├── notifications.py  # /api/notifications/* (list, mark read)
+│   │   │   │   ├── device_tokens.py  # /api/device-tokens/* (register, unregister)
 │   │   │   │   └── deps.py           # FastAPI dependencies (get_current_user, get_db)
-│   │   │   └── jobs/                 # Background jobs (APScheduler) — coming in Plan 3
+│   │   │   └── jobs/
+│   │   │       ├── scheduler.py      # APScheduler setup with PostgreSQL job store
+│   │   │       ├── bill_reminders.py # Daily job: check bills due soon, send notifications
+│   │   │       ├── budget_alerts.py  # 6-hourly job: check 80%/100% spend thresholds
+│   │   │       └── fallback_sync.py  # 3-day job: sync stale Plaid items (quota-aware)
 │   │   ├── migrations/               # Alembic async migrations
-│   │   └── tests/                    # 73 pytest tests (auth, Plaid, accounts, transactions, categories)
+│   │   └── tests/                    # 147 pytest tests + 36 integration tests
 │   ├── web/                          # Next.js frontend — coming in Plan 5
 │   └── mobile/                       # React Native (Expo) — coming in Plan 6
 ├── packages/
