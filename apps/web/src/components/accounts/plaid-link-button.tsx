@@ -56,8 +56,11 @@ function usePlaidScript(): boolean {
       'script[src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"]'
     );
     if (existing) {
-      existing.addEventListener("load", () => setLoaded(true));
-      return;
+      const onLoad = () => setLoaded(true);
+      existing.addEventListener("load", onLoad);
+      return () => {
+        existing.removeEventListener("load", onLoad);
+      };
     }
 
     const script = document.createElement("script");
@@ -113,6 +116,7 @@ export function PlaidLinkButton({ onSuccess }: PlaidLinkButtonProps) {
               err instanceof Error ? err.message : "Failed to link account"
             );
           } finally {
+            setIsLoading(false);
             handler.destroy();
           }
         },

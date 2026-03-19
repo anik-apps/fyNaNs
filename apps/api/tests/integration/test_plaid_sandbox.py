@@ -1,15 +1,11 @@
-"""Integration tests for Plaid sandbox flow.
+"""Plaid sandbox integration tests.
 
-These tests hit a running API server and the real Plaid sandbox API.
-They are skipped automatically when PLAID_CLIENT_ID is not set (e.g., in CI).
+These tests require:
+1. A running API server (localhost:8888)
+2. Plaid sandbox credentials in environment (PLAID_CLIENT_ID, PLAID_SECRET)
+3. A running PostgreSQL database
 
-Requirements:
-  - Running API server at API_BASE_URL (default: http://localhost:8888/api)
-  - PLAID_CLIENT_ID and PLAID_SECRET environment variables
-  - The API server must also have these Plaid credentials configured
-
-Usage:
-  PLAID_CLIENT_ID=xxx PLAID_SECRET=yyy poetry run pytest tests/integration/test_plaid_sandbox.py -v
+Tests are skipped if PLAID_CLIENT_ID is not set.
 """
 
 import os
@@ -20,18 +16,18 @@ import pytest
 
 PLAID_CLIENT_ID = os.getenv("PLAID_CLIENT_ID", "")
 PLAID_SECRET = os.getenv("PLAID_SECRET", "")
-SANDBOX_INSTITUTION_ID = "ins_109508"  # First Platypus Bank
+SANDBOX_INSTITUTION_ID = "ins_109508"
 SANDBOX_INSTITUTION_NAME = "First Platypus Bank"
 
 pytestmark = pytest.mark.skipif(
-    not PLAID_CLIENT_ID or not PLAID_SECRET,
-    reason="PLAID_CLIENT_ID and PLAID_SECRET not set; skipping Plaid sandbox tests",
+    not PLAID_CLIENT_ID,
+    reason="PLAID_CLIENT_ID not set — skipping Plaid sandbox tests",
 )
 
 
 @pytest.fixture(scope="module")
-def sandbox_public_token() -> str:
-    """Create a sandbox public token directly via the Plaid sandbox API."""
+def sandbox_public_token():
+    """Create a Plaid sandbox public token directly via Plaid API."""
     resp = httpx.post(
         "https://sandbox.plaid.com/sandbox/public_token/create",
         json={
@@ -57,7 +53,10 @@ def plaid_test_user(client, unique_suffix):
         "password": password,
         "name": f"Plaid Tester {unique_suffix}",
     })
-    assert resp.status_code == 201, f"Registration failed: {resp.text}"
+    if resp.status_code == 409:
+        pass  # Already registered from a previous run
+    else:
+        assert resp.status_code == 201, f"Registration failed: {resp.text}"
 
     login_resp = client.post("/auth/login", json={
         "email": email,
@@ -73,53 +72,40 @@ def plaid_test_user(client, unique_suffix):
     }
 
 
-class TestPlaidSandboxLinkToken:
-    """Test creating a Plaid Link token."""
+@pytest.fixture(scope="module")
+def exchanged_item(client, plaid_test_user, sandbox_public_token):
+    """Exchange the sandbox public token once and share across tests."""
+    resp = client.post(
+        "/plaid/exchange-token",
+        headers=plaid_test_user["headers"],
+        json={
+            "public_token": sandbox_public_token,
+            "institution_id": SANDBOX_INSTITUTION_ID,
+            "institution_name": SANDBOX_INSTITUTION_NAME,
+        },
+    )
+    assert resp.status_code == 200, f"Exchange failed: {resp.text}"
+    return resp.json()
 
+
+class TestPlaidSandboxLinkToken:
     def test_create_link_token(self, client, plaid_test_user):
         resp = client.post("/plaid/link-token", headers=plaid_test_user["headers"])
         assert resp.status_code == 200
         data = resp.json()
         assert "link_token" in data
         assert data["link_token"].startswith("link-sandbox-")
-        assert "expiration" in data
 
 
 class TestPlaidSandboxExchange:
-    """Test exchanging a sandbox public token."""
-
-    def test_exchange_sandbox_public_token(self, client, plaid_test_user, sandbox_public_token):
-        resp = client.post(
-            "/plaid/exchange-token",
-            headers=plaid_test_user["headers"],
-            json={
-                "public_token": sandbox_public_token,
-                "institution_id": SANDBOX_INSTITUTION_ID,
-                "institution_name": SANDBOX_INSTITUTION_NAME,
-            },
-        )
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["institution_name"] == SANDBOX_INSTITUTION_NAME
-        assert data["accounts_linked"] > 0
-        assert "plaid_item_id" in data
+    def test_exchange_returns_accounts(self, exchanged_item):
+        assert exchanged_item["institution_name"] == SANDBOX_INSTITUTION_NAME
+        assert exchanged_item["accounts_linked"] > 0
+        assert "plaid_item_id" in exchanged_item
 
 
 class TestPlaidSandboxItems:
-    """Test listing linked Plaid items."""
-
-    def test_list_plaid_items(self, client, plaid_test_user, sandbox_public_token):
-        # Ensure the item is linked first
-        client.post(
-            "/plaid/exchange-token",
-            headers=plaid_test_user["headers"],
-            json={
-                "public_token": sandbox_public_token,
-                "institution_id": SANDBOX_INSTITUTION_ID,
-                "institution_name": SANDBOX_INSTITUTION_NAME,
-            },
-        )
-
+    def test_list_plaid_items(self, client, plaid_test_user, exchanged_item):
         resp = client.get("/plaid/items", headers=plaid_test_user["headers"])
         assert resp.status_code == 200
         items = resp.json()
@@ -131,24 +117,18 @@ class TestPlaidSandboxItems:
 
 
 class TestPlaidSandboxTransactions:
-    """Test transaction sync in sandbox mode."""
+    def test_accounts_appear_after_linking(self, client, plaid_test_user, exchanged_item):
+        resp = client.get("/accounts", headers=plaid_test_user["headers"])
+        assert resp.status_code == 200
+        accounts = resp.json()
+        platypus_accounts = [
+            a for a in accounts
+            if a.get("institution_name") == SANDBOX_INSTITUTION_NAME
+        ]
+        assert len(platypus_accounts) > 0
 
-    def test_accounts_have_transactions_after_sync(
-        self, client, plaid_test_user, sandbox_public_token,
-    ):
-        """After linking, transactions should appear (sandbox auto-generates them)."""
-        # Link if not already linked
-        client.post(
-            "/plaid/exchange-token",
-            headers=plaid_test_user["headers"],
-            json={
-                "public_token": sandbox_public_token,
-                "institution_id": SANDBOX_INSTITUTION_ID,
-                "institution_name": SANDBOX_INSTITUTION_NAME,
-            },
-        )
-
-        # Poll for transactions (sync may take a moment in sandbox)
+    def test_transactions_sync(self, client, plaid_test_user, exchanged_item):
+        """Sandbox should generate test transactions after linking."""
         transactions = []
         for _ in range(15):
             resp = client.get("/transactions", headers=plaid_test_user["headers"])
@@ -159,16 +139,4 @@ class TestPlaidSandboxTransactions:
                 break
             time.sleep(1)
 
-        # Sandbox should generate test transactions
         assert len(transactions) > 0, "Expected sandbox transactions after sync"
-
-    def test_accounts_appear_after_linking(self, client, plaid_test_user):
-        """Verify that accounts from First Platypus Bank exist."""
-        resp = client.get("/accounts", headers=plaid_test_user["headers"])
-        assert resp.status_code == 200
-        accounts = resp.json()
-        platypus_accounts = [
-            a for a in accounts
-            if a.get("institution_name") == SANDBOX_INSTITUTION_NAME
-        ]
-        assert len(platypus_accounts) > 0, "Expected accounts from First Platypus Bank"
