@@ -85,7 +85,10 @@ async def _get_accounts_by_type(db: AsyncSession, user_id: str) -> AccountBalanc
     accounts = result.scalars().all()
 
     grouped = AccountBalancesByType()
+    valid_types = {"checking", "savings", "credit", "loan", "investment"}
     for acct in accounts:
+        if acct.type not in valid_types:
+            continue
         balance = AccountBalance(
             id=str(acct.id),
             name=acct.name,
@@ -106,7 +109,7 @@ async def _get_recent_transactions(
     """Get last N transactions with category info."""
     result = await db.execute(
         select(Transaction, Category.name, Category.color, Account.name.label("account_name"))
-        .join(Category, Transaction.category_id == Category.id)
+        .outerjoin(Category, Transaction.category_id == Category.id)
         .join(Account, Transaction.account_id == Account.id)
         .where(Transaction.user_id == user_id)
         .order_by(Transaction.date.desc(), Transaction.created_at.desc())
@@ -121,8 +124,8 @@ async def _get_recent_transactions(
             description=txn.description,
             merchant_name=txn.merchant_name,
             amount=txn.amount,
-            category_name=cat_name,
-            category_color=cat_color,
+            category_name=cat_name or "Uncategorized",
+            category_color=cat_color or "#6B7280",
             account_name=acct_name,
             is_pending=txn.is_pending,
         )
