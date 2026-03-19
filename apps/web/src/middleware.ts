@@ -24,18 +24,16 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // In split-origin mode (frontend: 3000, API: 8888), the refresh_token
-  // cookie is set by the API origin and not visible to the Next.js middleware.
-  // Auth protection is handled client-side by AuthProvider.
-  // In production (same origin behind Caddy), the cookie will be visible
-  // and this check can be re-enabled.
-  //
-  // const hasRefreshToken = request.cookies.has("refresh_token");
-  // if (!hasRefreshToken) {
-  //   const loginUrl = new URL("/login", request.url);
-  //   loginUrl.searchParams.set("redirect", pathname);
-  //   return NextResponse.redirect(loginUrl);
-  // }
+  // Check for refresh token cookie.
+  // In dev with proxy (same-origin), the cookie is visible.
+  // In production behind Caddy (same-origin), the cookie is also visible.
+  const hasRefreshToken = request.cookies.has("refresh_token");
+
+  if (!hasRefreshToken) {
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("redirect", pathname);
+    return NextResponse.redirect(loginUrl);
+  }
 
   return NextResponse.next();
 }

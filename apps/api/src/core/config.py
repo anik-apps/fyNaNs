@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     api_url: str = "http://localhost:8000"
     cors_origins: str = "http://localhost:3000"
     cookie_secure: bool = False  # True in production (HTTPS)
-    cookie_samesite: str = "lax"  # "strict" in production (same origin)
+    cookie_samesite: str = "lax"  # "strict" in production (same origin). Valid: strict, lax, none
     plaid_client_id: str = ""
     plaid_secret: str = ""
     plaid_env: str = "sandbox"  # sandbox, development, production

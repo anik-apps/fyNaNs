@@ -1,4 +1,3 @@
-import { API_URL } from "./constants";
 import { setAccessToken, apiFetch } from "./api-client";
 
 export interface AuthUser {
@@ -23,7 +22,7 @@ export interface RegisterData {
 export async function login(
   credentials: LoginCredentials
 ): Promise<{ user: AuthUser | null; requires_mfa?: boolean; mfa_token?: string }> {
-  const response = await fetch(`${API_URL}/api/auth/login`, {
+  const response = await fetch(`/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
@@ -56,7 +55,7 @@ export async function register(
   data: RegisterData
 ): Promise<{ user: AuthUser }> {
   // Step 1: Register the user
-  const regResponse = await fetch(`${API_URL}/api/auth/register`, {
+  const regResponse = await fetch(`/api/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
@@ -77,7 +76,7 @@ export async function verifyMfa(
   mfaToken: string,
   code: string
 ): Promise<{ user: AuthUser }> {
-  const response = await fetch(`${API_URL}/api/auth/mfa/verify`, {
+  const response = await fetch(`/api/auth/mfa/verify`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -102,7 +101,7 @@ export async function oauthLogin(
   provider: "google" | "apple",
   token: string
 ): Promise<{ user: AuthUser }> {
-  const response = await fetch(`${API_URL}/api/auth/oauth/${provider}`, {
+  const response = await fetch(`/api/auth/oauth/${provider}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
@@ -121,7 +120,7 @@ export async function oauthLogin(
 }
 
 export async function logout(): Promise<void> {
-  await fetch(`${API_URL}/api/auth/logout`, {
+  await fetch(`/api/auth/logout`, {
     method: "POST",
     credentials: "include",
   });
@@ -130,7 +129,7 @@ export async function logout(): Promise<void> {
 
 export async function refreshSession(): Promise<AuthUser | null> {
   try {
-    const response = await fetch(`${API_URL}/api/auth/refresh`, {
+    const response = await fetch(`/api/auth/refresh`, {
       method: "POST",
       credentials: "include",
     });

@@ -11,14 +11,7 @@ async function loginViaForm(page: any, email: string, password: string) {
   await page.fill('[id="email"]', email);
   await page.fill('[id="password"]', password);
   await page.click('button[type="submit"]');
-  await expect(page).toHaveURL(/\/dashboard/, { timeout: 15000 });
-}
-
-// Helper: assert no JS errors on page
-async function assertNoErrors(page: any) {
-  await expect(page.locator("text=TypeError")).not.toBeVisible();
-  await expect(page.locator("text=Cannot read properties")).not.toBeVisible();
-  await expect(page.locator("text=is not defined")).not.toBeVisible();
+  await page.waitForURL(/\/dashboard/, { timeout: 15000 });
 }
 
 test.describe("All pages load without errors", () => {
@@ -27,91 +20,110 @@ test.describe("All pages load without errors", () => {
 
   test.beforeAll(async () => {
     email = uniqueEmail();
-    await fetch(`${API_URL}/api/auth/register`, {
+    const resp = await fetch(`${API_URL}/api/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password, name: "Page Test User" }),
     });
+    if (!resp.ok) {
+      throw new Error(`Setup failed: registration returned ${resp.status}`);
+    }
   });
 
+  function setupErrorCollection(page: any) {
+    const errors: string[] = [];
+    page.on("pageerror", (error: Error) => {
+      errors.push(error.message);
+    });
+    return errors;
+  }
+
   test("dashboard loads without errors", async ({ page }) => {
+    const errors = setupErrorCollection(page);
     await loginViaForm(page, email, password);
-    // Wait for dashboard content to load (skeleton disappears)
-    await page.waitForTimeout(3000);
-    await assertNoErrors(page);
-    // Should be on dashboard
+    await page.waitForLoadState("networkidle");
     await expect(page).toHaveURL(/\/dashboard/);
+    expect(errors).toEqual([]);
   });
 
   test("accounts page loads without errors", async ({ page }) => {
+    const errors = setupErrorCollection(page);
     await loginViaForm(page, email, password);
     await page.goto("/accounts");
+    await page.waitForLoadState("networkidle");
     await expect(page).toHaveURL(/\/accounts/);
-    await page.waitForTimeout(2000);
-    await assertNoErrors(page);
+    expect(errors).toEqual([]);
   });
 
   test("transactions page loads without errors", async ({ page }) => {
+    const errors = setupErrorCollection(page);
     await loginViaForm(page, email, password);
     await page.goto("/transactions");
+    await page.waitForLoadState("networkidle");
     await expect(page).toHaveURL(/\/transactions/);
-    await page.waitForTimeout(2000);
-    await assertNoErrors(page);
+    expect(errors).toEqual([]);
   });
 
   test("budgets page loads without errors", async ({ page }) => {
+    const errors = setupErrorCollection(page);
     await loginViaForm(page, email, password);
     await page.goto("/budgets");
+    await page.waitForLoadState("networkidle");
     await expect(page).toHaveURL(/\/budgets/);
-    await page.waitForTimeout(2000);
-    await assertNoErrors(page);
+    expect(errors).toEqual([]);
   });
 
   test("bills page loads without errors", async ({ page }) => {
+    const errors = setupErrorCollection(page);
     await loginViaForm(page, email, password);
     await page.goto("/bills");
+    await page.waitForLoadState("networkidle");
     await expect(page).toHaveURL(/\/bills/);
-    await page.waitForTimeout(2000);
-    await assertNoErrors(page);
+    expect(errors).toEqual([]);
   });
 
   test("settings page loads without errors", async ({ page }) => {
+    const errors = setupErrorCollection(page);
     await loginViaForm(page, email, password);
     await page.goto("/settings");
+    await page.waitForLoadState("networkidle");
     await expect(page).toHaveURL(/\/settings/);
-    await page.waitForTimeout(2000);
-    await assertNoErrors(page);
+    expect(errors).toEqual([]);
   });
 
   test("settings/profile loads without errors", async ({ page }) => {
+    const errors = setupErrorCollection(page);
     await loginViaForm(page, email, password);
     await page.goto("/settings/profile");
+    await page.waitForLoadState("networkidle");
     await expect(page).toHaveURL(/\/settings\/profile/);
-    await page.waitForTimeout(2000);
-    await assertNoErrors(page);
+    expect(errors).toEqual([]);
   });
 
   test("settings/security loads without errors", async ({ page }) => {
+    const errors = setupErrorCollection(page);
     await loginViaForm(page, email, password);
     await page.goto("/settings/security");
+    await page.waitForLoadState("networkidle");
     await expect(page).toHaveURL(/\/settings\/security/);
-    await page.waitForTimeout(2000);
-    await assertNoErrors(page);
+    expect(errors).toEqual([]);
   });
 
   test("settings/notifications loads without errors", async ({ page }) => {
+    const errors = setupErrorCollection(page);
     await loginViaForm(page, email, password);
     await page.goto("/settings/notifications");
+    await page.waitForLoadState("networkidle");
     await expect(page).toHaveURL(/\/settings\/notifications/);
-    await page.waitForTimeout(2000);
-    await assertNoErrors(page);
+    expect(errors).toEqual([]);
   });
 
   test("notifications page loads without errors", async ({ page }) => {
+    const errors = setupErrorCollection(page);
     await loginViaForm(page, email, password);
     await page.goto("/notifications");
+    await page.waitForLoadState("networkidle");
     await expect(page).toHaveURL(/\/notifications/);
-    await page.waitForTimeout(2000);
-    await assertNoErrors(page);
+    expect(errors).toEqual([]);
   });
 });
