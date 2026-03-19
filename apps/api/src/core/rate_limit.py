@@ -72,10 +72,16 @@ def rate_limit_login(request: Request) -> None:
     rate_limiter.check(f"login:{client_ip}", max_requests=LOGIN_RATE_LIMIT, window_seconds=60)
 
 
+try:
+    GENERAL_RATE_LIMIT = max(10, int(os.getenv("GENERAL_RATE_LIMIT", "100")))
+except ValueError:
+    GENERAL_RATE_LIMIT = 100
+
+
 def rate_limit_general(request: Request) -> None:
-    """100 requests per minute per IP."""
+    """General requests per minute per IP. Configurable via GENERAL_RATE_LIMIT env var."""
     client_ip = _get_client_ip(request)
-    rate_limiter.check(f"general:{client_ip}", max_requests=100, window_seconds=60)
+    rate_limiter.check(f"general:{client_ip}", max_requests=GENERAL_RATE_LIMIT, window_seconds=60)
 
 
 def rate_limit_password_reset(request: Request) -> None:
