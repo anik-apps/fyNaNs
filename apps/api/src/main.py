@@ -7,7 +7,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
 from src.core.config import settings
-from src.core.rate_limit import rate_limiter
+from src.core.rate_limit import GENERAL_RATE_LIMIT, rate_limiter
 from src.routers import (
     accounts,
     auth,
@@ -59,7 +59,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Per-IP general rate limit (100/min)
         client_ip = request.client.host if request.client else "unknown"
         try:
-            rate_limiter.check(f"general:{client_ip}", max_requests=100, window_seconds=60)
+            rate_limiter.check(f"general:{client_ip}", max_requests=GENERAL_RATE_LIMIT, window_seconds=60)
         except Exception:
             return JSONResponse(status_code=429, content={"detail": "Too many requests"})
 
