@@ -23,8 +23,8 @@ export function BillList() {
   useEffect(() => {
     async function fetchBills() {
       try {
-        const data = await apiFetch<{ items: Bill[] }>("/api/bills");
-        setBills(data.items);
+        const data = await apiFetch<Bill[]>("/api/bills");
+        setBills(data);
       } catch {
         // handled by API client
       } finally {

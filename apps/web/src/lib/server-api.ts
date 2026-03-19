@@ -1,7 +1,9 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
-import { API_URL } from "./constants";
+
+// Server-side needs the actual backend URL (not the proxy)
+const SERVER_API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8888";
 
 /**
  * Cached per-request function to get an access token.
@@ -16,7 +18,7 @@ const getServerAccessToken = cache(async (): Promise<string> => {
     redirect("/login");
   }
 
-  const refreshResponse = await fetch(`${API_URL}/api/auth/refresh`, {
+  const refreshResponse = await fetch(`${SERVER_API_URL}/api/auth/refresh`, {
     method: "POST",
     headers: {
       Cookie: `refresh_token=${refreshToken}`,
@@ -56,7 +58,7 @@ export async function serverFetch<T>(path: string): Promise<T> {
   }
 
   // Fetch the actual data
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await fetch(`${SERVER_API_URL}${path}`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },

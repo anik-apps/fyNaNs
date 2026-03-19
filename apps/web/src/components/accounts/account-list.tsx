@@ -22,8 +22,8 @@ export function AccountList() {
   useEffect(() => {
     async function fetchAccounts() {
       try {
-        const data = await apiFetch<{ items: Account[] }>("/api/accounts");
-        setAccounts(data.items);
+        const data = await apiFetch<Account[]>("/api/accounts");
+        setAccounts(data);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load accounts");
       } finally {

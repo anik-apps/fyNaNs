@@ -23,8 +23,8 @@ export function BudgetList() {
   useEffect(() => {
     async function fetchBudgets() {
       try {
-        const data = await apiFetch<{ items: Budget[] }>("/api/budgets");
-        setBudgets(data.items);
+        const data = await apiFetch<Budget[]>("/api/budgets");
+        setBudgets(data);
       } catch {
         // handled by API client
       } finally {

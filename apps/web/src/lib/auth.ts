@@ -1,5 +1,5 @@
 import { API_URL } from "./constants";
-import { setAccessToken } from "./api-client";
+import { setAccessToken, apiFetch } from "./api-client";
 
 export interface AuthUser {
   id: string;
@@ -49,7 +49,6 @@ export async function login(
 }
 
 async function fetchProfile(): Promise<AuthUser> {
-  const { apiFetch } = await import("./api-client");
   return apiFetch<AuthUser>("/api/user/profile");
 }
 

@@ -30,11 +30,11 @@ export default function TransactionsPage() {
     async function fetchFilters() {
       try {
         const [cats, accts] = await Promise.all([
-          apiFetch<{ items: Category[] }>("/api/categories"),
-          apiFetch<{ items: Account[] }>("/api/accounts"),
+          apiFetch<Category[]>("/api/categories"),
+          apiFetch<Account[]>("/api/accounts"),
         ]);
-        setCategories(cats.items);
-        setAccounts(accts.items);
+        setCategories(cats);
+        setAccounts(accts);
       } catch {
         // silently fail - filters just won't populate
       }

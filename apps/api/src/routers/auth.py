@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.config import settings
 from src.core.database import get_db
 from src.core.rate_limit import rate_limit_login, rate_limit_mfa_verify, rate_limit_password_reset
 from src.core.security import create_mfa_pending_token
@@ -30,6 +31,19 @@ from src.services.auth import AuthError, authenticate_user, register_user
 from src.services.token import create_token_pair, revoke_refresh_token, rotate_refresh_token
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _set_refresh_cookie(response: Response, token: str) -> None:
+    """Set refresh token cookie with environment-appropriate settings."""
+    response.set_cookie(
+        key="refresh_token",
+        value=token,
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite=settings.cookie_samesite,
+        max_age=30 * 24 * 60 * 60,  # 30 days
+        path="/",
+    )
 
 
 @router.post("/register", response_model=UserResponse, status_code=201)
@@ -68,16 +82,7 @@ async def login(
     device_info = http_request.headers.get("user-agent", "unknown")
     access_token, refresh_token = await create_token_pair(db, user.id, device_info)
 
-    # Set refresh token as HttpOnly cookie for web clients
-    response.set_cookie(
-        key="refresh_token",
-        value=refresh_token,
-        httponly=True,
-        secure=True,
-        samesite="strict",
-        max_age=30 * 24 * 60 * 60,  # 30 days
-        path="/auth/refresh",
-    )
+    _set_refresh_cookie(response, refresh_token)
 
     return TokenResponse(access_token=access_token)
 
@@ -103,15 +108,7 @@ async def refresh(
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e)) from None
 
-    response.set_cookie(
-        key="refresh_token",
-        value=new_refresh,
-        httponly=True,
-        secure=True,
-        samesite="strict",
-        max_age=30 * 24 * 60 * 60,
-        path="/auth/refresh",
-    )
+    _set_refresh_cookie(response, new_refresh)
 
     return TokenResponse(access_token=access_token)
 
@@ -134,7 +131,7 @@ async def logout(
         await revoke_refresh_token(db, token_hash)
 
     # Clear cookie
-    response.delete_cookie("refresh_token", path="/auth/refresh")
+    response.delete_cookie("refresh_token", path="/")
     return {"detail": "Logged out"}
 
 
@@ -198,15 +195,7 @@ async def oauth_login(
     device_info = http_request.headers.get("user-agent", "unknown")
     access_token, refresh_token = await create_token_pair(db, user_id, device_info)
 
-    response.set_cookie(
-        key="refresh_token",
-        value=refresh_token,
-        httponly=True,
-        secure=True,
-        samesite="strict",
-        max_age=30 * 24 * 60 * 60,
-        path="/auth/refresh",
-    )
+    _set_refresh_cookie(response, refresh_token)
 
     return TokenResponse(access_token=access_token)
 
@@ -310,15 +299,7 @@ async def mfa_verify(
     device_info = http_request.headers.get("user-agent", "unknown")
     access_token, refresh_token = await create_token_pair(db, user.id, device_info)
 
-    response.set_cookie(
-        key="refresh_token",
-        value=refresh_token,
-        httponly=True,
-        secure=True,
-        samesite="strict",
-        max_age=30 * 24 * 60 * 60,
-        path="/auth/refresh",
-    )
+    _set_refresh_cookie(response, refresh_token)
 
     return TokenResponse(access_token=access_token)
 

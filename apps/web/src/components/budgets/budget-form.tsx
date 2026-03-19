@@ -58,8 +58,8 @@ export function BudgetForm({ onBudgetCreated }: BudgetFormProps) {
 
   useEffect(() => {
     if (open) {
-      apiFetch<{ items: Category[] }>("/api/categories")
-        .then((data) => setCategories(data.items))
+      apiFetch<Category[]>("/api/categories")
+        .then((data) => setCategories(data))
         .catch(() => {});
     }
   }, [open]);

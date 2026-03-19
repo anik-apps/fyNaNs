@@ -18,9 +18,11 @@ export const ROUTES = {
   SETTINGS_NOTIFICATIONS: "/settings/notifications",
 } as const;
 
-// Base URL for the API server. Should NOT include /api — all paths include it.
-export const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8888";
+// Base URL for API calls.
+// In development, Next.js rewrites proxy /api/* to the backend (same-origin, cookies work).
+// In production, Caddy routes /api/* to FastAPI (also same-origin).
+// So this should be empty — all API calls use relative paths like /api/auth/login.
+export const API_URL = "";
 
 export const BREAKPOINTS = {
   sm: 640,

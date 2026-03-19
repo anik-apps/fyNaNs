@@ -1,4 +1,6 @@
-import { Suspense } from "react";
+"use client";
+
+import { useEffect, useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { NetWorthCard } from "@/components/dashboard/net-worth-card";
 import { AccountsSummary } from "@/components/dashboard/accounts-summary";
@@ -6,20 +8,7 @@ import { SpendingChart } from "@/components/dashboard/spending-chart";
 import { BudgetBars } from "@/components/dashboard/budget-bars";
 import { UpcomingBills } from "@/components/dashboard/upcoming-bills";
 import { RecentTransactions } from "@/components/dashboard/recent-transactions";
-import { serverFetch } from "@/lib/server-api";
-
-function DashboardSkeleton() {
-  return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold">Dashboard</h1>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <Skeleton key={i} className="h-48" />
-        ))}
-      </div>
-    </div>
-  );
-}
+import { apiFetch } from "@/lib/api-client";
 
 interface DashboardData {
   net_worth: {
@@ -73,8 +62,40 @@ interface DashboardData {
   }>;
 }
 
-async function DashboardContent() {
-  const data = await serverFetch<DashboardData>("/api/dashboard");
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-4">
+      <h1 className="text-2xl font-bold">Dashboard</h1>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <Skeleton key={i} className="h-48" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default function DashboardPage() {
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchDashboard() {
+      try {
+        const result = await apiFetch<DashboardData>("/api/dashboard");
+        setData(result);
+      } catch {
+        // Auth redirect handled by apiFetch
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchDashboard();
+  }, []);
+
+  if (isLoading || !data) {
+    return <DashboardSkeleton />;
+  }
 
   return (
     <div className="space-y-4">
@@ -102,13 +123,5 @@ async function DashboardContent() {
 
       <RecentTransactions transactions={data.recent_transactions} />
     </div>
-  );
-}
-
-export default function DashboardPage() {
-  return (
-    <Suspense fallback={<DashboardSkeleton />}>
-      <DashboardContent />
-    </Suspense>
   );
 }

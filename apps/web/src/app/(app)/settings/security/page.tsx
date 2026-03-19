@@ -100,10 +100,8 @@ export default function SecurityPage() {
   useEffect(() => {
     async function fetchSessions() {
       try {
-        const data = await apiFetch<{ items: Session[] }>(
-          "/api/auth/sessions"
-        );
-        setSessions(data.items);
+        const data = await apiFetch<Session[]>("/api/auth/sessions");
+        setSessions(data);
       } catch {
         // handled
       } finally {

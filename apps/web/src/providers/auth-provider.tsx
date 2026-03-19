@@ -81,17 +81,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const result = await loginFn(credentials);
     if (!result.requires_mfa && result.user) {
       setUser(result.user);
+      router.push(ROUTES.DASHBOARD);
     }
     return {
       requires_mfa: result.requires_mfa,
       mfa_token: result.mfa_token,
     };
-  }, []);
+  }, [router]);
 
   const register = useCallback(async (data: RegisterData) => {
     const result = await registerFn(data);
     setUser(result.user);
-  }, []);
+    router.push(ROUTES.DASHBOARD);
+  }, [router]);
 
   const loginWithOAuth = useCallback(
     async (provider: "google" | "apple", token: string) => {
@@ -105,8 +107,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (mfaToken: string, code: string) => {
       const result = await verifyMfa(mfaToken, code);
       setUser(result.user);
+      router.push(ROUTES.DASHBOARD);
     },
-    []
+    [router]
   );
 
   const logout = useCallback(async () => {
