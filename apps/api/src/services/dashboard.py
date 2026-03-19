@@ -24,14 +24,21 @@ ASSET_TYPES = {"checking", "savings", "investment"}
 LIABILITY_TYPES = {"credit", "loan"}
 
 
-async def get_dashboard(db: AsyncSession, user_id: str) -> DashboardResponse:
-    """Aggregate all dashboard data for a user."""
+async def get_dashboard(
+    db: AsyncSession, user_id: str, today: date | None = None
+) -> DashboardResponse:
+    """Aggregate all dashboard data for a user.
+
+    Args:
+        today: Override for current date (defaults to date.today()). Useful for testing.
+    """
+    today = today or date.today()
     net_worth = await _get_net_worth(db, user_id)
     accounts_by_type = await _get_accounts_by_type(db, user_id)
     recent_transactions = await _get_recent_transactions(db, user_id, limit=10)
-    top_budgets = await _get_top_budgets(db, user_id, limit=5)
-    upcoming_bills = await _get_upcoming_bills(db, user_id, days=7)
-    spending_comparison = await _get_spending_comparison(db, user_id)
+    top_budgets = await _get_top_budgets(db, user_id, limit=5, today=today)
+    upcoming_bills = await _get_upcoming_bills(db, user_id, days=7, today=today)
+    spending_comparison = await _get_spending_comparison(db, user_id, today=today)
 
     return DashboardResponse(
         net_worth=net_worth,
@@ -146,7 +153,7 @@ def _get_period_start(period: str, today: date) -> date:
 
 
 async def _get_top_budgets(
-    db: AsyncSession, user_id: str, limit: int = 5
+    db: AsyncSession, user_id: str, limit: int = 5, today: date | None = None
 ) -> list[BudgetStatus]:
     """Get top N budgets by percent spent in current period.
 
@@ -159,7 +166,7 @@ async def _get_top_budgets(
     date filtering (e.g., CASE/FILTER per period type) or a LATERAL JOIN
     so the DB does all aggregation in one round-trip.
     """
-    today = date.today()
+    today = today or date.today()
 
     # First, fetch all budgets with their categories
     result = await db.execute(
@@ -208,10 +215,10 @@ async def _get_top_budgets(
 
 
 async def _get_upcoming_bills(
-    db: AsyncSession, user_id: str, days: int = 7
+    db: AsyncSession, user_id: str, days: int = 7, today: date | None = None
 ) -> list[UpcomingBill]:
     """Get bills due in the next N days."""
-    today = date.today()
+    today = today or date.today()
     cutoff = today + timedelta(days=days)
 
     result = await db.execute(
@@ -241,9 +248,15 @@ async def _get_upcoming_bills(
     ]
 
 
-async def _get_spending_comparison(db: AsyncSession, user_id: str) -> SpendingComparison:
-    """Compare spending this month vs last month."""
-    today = date.today()
+async def _get_spending_comparison(
+    db: AsyncSession, user_id: str, today: date | None = None
+) -> SpendingComparison:
+    """Compare spending this month vs last month.
+
+    Note: Compares partial current month against full previous month.
+    Early in the month, current spending will naturally be lower.
+    """
+    today = today or date.today()
     current_month_start = today.replace(day=1)
 
     # Previous month start
