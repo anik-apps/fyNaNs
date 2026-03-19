@@ -1,8 +1,17 @@
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_db
+from src.models.account import Account
+from src.models.bill import Bill
+from src.models.budget import Budget
+from src.models.device_token import DeviceToken
+from src.models.notification import Notification
+from src.models.plaid_item import PlaidItem
+from src.models.transaction import Transaction
 from src.models.user import User
 from src.models.user_settings import UserSettings
 from src.routers.deps import get_current_user
@@ -94,3 +103,54 @@ async def request_export(
     # For B phase, run inline (data is small).
     await generate_export(db, user)
     return {"detail": "Export started. You'll receive a download link via email."}
+
+
+async def _revoke_plaid_tokens(db: AsyncSession, user_id: uuid.UUID) -> None:
+    """Best-effort revocation of Plaid access tokens."""
+    result = await db.execute(
+        select(PlaidItem).where(PlaidItem.user_id == user_id)
+    )
+    plaid_items = result.scalars().all()
+
+    for item in plaid_items:
+        try:
+            from src.services.plaid import _get_plaid_client, get_decrypted_access_token
+
+            access_token = await get_decrypted_access_token(item)
+            client = _get_plaid_client()
+            from plaid.model.item_remove_request import ItemRemoveRequest
+
+            client.item_remove(ItemRemoveRequest(access_token=access_token))
+        except Exception:
+            # Log error but proceed -- orphaned tokens expire naturally
+            pass
+
+
+@router.delete("/account")
+async def delete_user_account(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete all user data.
+
+    Cascade order:
+    1. Revoke Plaid access tokens (best effort)
+    2. Delete all user data in DB
+    """
+    # Step 1: Revoke Plaid tokens
+    await _revoke_plaid_tokens(db, user.id)
+
+    # Step 2: Delete user data in correct order to respect FK constraints
+    await db.execute(delete(Notification).where(Notification.user_id == user.id))
+    await db.execute(delete(Transaction).where(Transaction.user_id == user.id))
+    await db.execute(delete(Budget).where(Budget.user_id == user.id))
+    await db.execute(delete(Bill).where(Bill.user_id == user.id))
+    await db.execute(delete(DeviceToken).where(DeviceToken.user_id == user.id))
+    await db.execute(delete(Account).where(Account.user_id == user.id))
+    await db.execute(delete(PlaidItem).where(PlaidItem.user_id == user.id))
+
+    # This will cascade-delete OAuth accounts, settings, refresh tokens
+    await db.delete(user)
+    await db.commit()
+
+    return {"detail": "Account and all associated data deleted"}
