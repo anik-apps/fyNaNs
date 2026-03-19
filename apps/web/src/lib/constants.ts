@@ -18,8 +18,9 @@ export const ROUTES = {
   SETTINGS_NOTIFICATIONS: "/settings/notifications",
 } as const;
 
+// Base URL for the API server. Should NOT include /api — all paths include it.
 export const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8888";
 
 export const BREAKPOINTS = {
   sm: 640,
