@@ -1,3 +1,6 @@
+import logging
+from contextlib import asynccontextmanager
+
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -19,7 +22,32 @@ from src.routers import (
     user,
 )
 
-app = FastAPI(title="fyNaNs API", version="0.1.0")
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app):
+    # Startup
+    try:
+        from src.jobs.scheduler import scheduler, setup_jobs
+
+        setup_jobs()
+        scheduler.start()
+        logger.info("APScheduler started")
+    except Exception:
+        logger.warning("APScheduler failed to start (non-fatal)", exc_info=True)
+    yield
+    # Shutdown
+    try:
+        from src.jobs.scheduler import scheduler
+
+        scheduler.shutdown()
+        logger.info("APScheduler shut down")
+    except Exception:
+        pass
+
+
+app = FastAPI(title="fyNaNs API", version="0.1.0", lifespan=lifespan)
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
