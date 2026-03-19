@@ -52,7 +52,8 @@ fyNaNs/
 │   │   │   │   ├── plaid.py          # Plaid link/exchange request/response models
 │   │   │   │   ├── account.py        # Account CRUD request/response models
 │   │   │   │   ├── transaction.py    # Transaction CRUD, import, summary models
-│   │   │   │   └── category.py       # Category CRUD request/response models
+│   │   │   │   ├── category.py       # Category CRUD request/response models
+│   │   │   │   └── dashboard.py      # Dashboard aggregation response schemas
 │   │   │   ├── services/
 │   │   │   │   ├── auth.py           # Registration, login, password validation
 │   │   │   │   ├── token.py          # JWT creation, refresh token rotation with grace window
@@ -66,7 +67,8 @@ fyNaNs/
 │   │   │   │   ├── budget.py         # Budget CRUD with computed spend per period
 │   │   │   │   ├── bill.py           # Bill CRUD with auto-advance to next future due date
 │   │   │   │   ├── notification.py   # Notification dedup, push via Expo Push API
-│   │   │   │   └── export.py         # User data export as ZIP of JSON files
+│   │   │   │   ├── export.py         # User data export as ZIP of JSON files
+│   │   │   │   └── dashboard.py      # Dashboard aggregation (net worth, budgets, bills, spending)
 │   │   │   ├── routers/
 │   │   │   │   ├── auth.py           # /api/auth/* (register, login, OAuth, MFA, sessions)
 │   │   │   │   ├── user.py           # /api/user/* (profile, settings, export, account deletion)
@@ -79,6 +81,7 @@ fyNaNs/
 │   │   │   │   ├── bills.py          # /api/bills/* (CRUD, upcoming)
 │   │   │   │   ├── notifications.py  # /api/notifications/* (list, mark read)
 │   │   │   │   ├── device_tokens.py  # /api/device-tokens/* (register, unregister)
+│   │   │   │   ├── dashboard.py      # GET /api/dashboard (aggregated dashboard view)
 │   │   │   │   └── deps.py           # FastAPI dependencies (get_current_user, get_db)
 │   │   │   └── jobs/
 │   │   │       ├── scheduler.py      # APScheduler setup with PostgreSQL job store
@@ -86,14 +89,24 @@ fyNaNs/
 │   │   │       ├── budget_alerts.py  # 6-hourly job: check 80%/100% spend thresholds
 │   │   │       └── fallback_sync.py  # 3-day job: sync stale Plaid items (quota-aware)
 │   │   ├── migrations/               # Alembic async migrations
-│   │   └── tests/                    # 147 pytest tests + 36 integration tests
+│   │   ├── tests/                    # 156 pytest tests + 43 integration tests
+│   │   │   └── factories.py         # Test data factories for dashboard-related models
 │   ├── web/                          # Next.js frontend — coming in Plan 5
 │   └── mobile/                       # React Native (Expo) — coming in Plan 6
 ├── packages/
-│   ├── api-client/                   # Auto-generated TypeScript API client — coming in Plan 4
-│   └── shared-types/                 # Shared TypeScript types/constants — coming in Plan 4
+│   ├── api-client/                   # Auto-generated TypeScript API client (openapi-ts + @hey-api/client-fetch)
+│   │   ├── openapi-ts.config.ts      # Code generation config (input: openapi.json, output: src/)
+│   │   └── tsconfig.json             # TypeScript build config
+│   └── shared-types/                 # Shared TypeScript types and constants
+│       └── src/
+│           ├── index.ts              # Barrel re-exports
+│           ├── accounts.ts           # Account type constants and labels
+│           ├── budgets.ts            # Budget period constants and thresholds
+│           ├── bills.ts              # Bill frequency constants and status helpers
+│           └── constants.ts          # App-wide constants (notifications, theme, pagination)
 ├── scripts/
-│   └── seed-categories.py            # Seeds 40+ default transaction categories
+│   ├── seed-categories.py            # Seeds 40+ default transaction categories
+│   └── generate-api-client.sh        # Downloads OpenAPI spec and generates TypeScript client
 └── docker-compose.yml                # Local dev PostgreSQL
 ```
 

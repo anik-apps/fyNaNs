@@ -1,5 +1,19 @@
 {
   "name": "@fynans/api-client",
-  "version": "0.0.1",
-  "private": true
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "generate": "openapi-ts",
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@hey-api/client-fetch": "^0.6"
+  },
+  "devDependencies": {
+    "@hey-api/openapi-ts": "^0.61",
+    "typescript": "^5.5"
+  }
 }
