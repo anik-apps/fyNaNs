@@ -72,8 +72,9 @@ async def create_notification(
         )
         tokens = device_result.scalars().all()
 
-        for dt in tokens:
-            await _send_expo_push(dt.token, title, body)
+        async with httpx.AsyncClient() as push_client:
+            for dt in tokens:
+                await _send_expo_push(dt.token, title, body, client=push_client)
 
     # Send email notification
     if channel == "email" or (user_settings and user_settings.notify_email):
@@ -83,11 +84,18 @@ async def create_notification(
     return notif
 
 
-async def _send_expo_push(expo_token: str, title: str, body: str) -> bool:
+async def _send_expo_push(
+    expo_token: str,
+    title: str,
+    body: str,
+    *,
+    client: httpx.AsyncClient | None = None,
+) -> bool:
     """Send a push notification via Expo Push API."""
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
+        _client = client or httpx.AsyncClient()
+        try:
+            response = await _client.post(
                 EXPO_PUSH_URL,
                 json={
                     "to": expo_token,
@@ -98,6 +106,9 @@ async def _send_expo_push(expo_token: str, title: str, body: str) -> bool:
                 headers={"Content-Type": "application/json"},
             )
             return response.status_code == 200
+        finally:
+            if client is None:
+                await _client.aclose()
     except Exception:
         # Log error but don't fail -- push is best-effort
         return False

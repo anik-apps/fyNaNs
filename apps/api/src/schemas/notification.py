@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -25,7 +26,7 @@ class NotificationListResponse(BaseModel):
 
 class DeviceTokenCreateRequest(BaseModel):
     token: str
-    platform: str  # ios, android
+    platform: Literal["ios", "android"]
 
 
 class DeviceTokenResponse(BaseModel):

@@ -12,7 +12,7 @@ class BudgetCreateRequest(BaseModel):
 
 class BudgetUpdateRequest(BaseModel):
     amount_limit: str | None = None
-    period: str | None = None
+    period: str | None = Field(default=None, pattern="^(monthly|weekly|yearly)$")
 
 
 class BudgetResponse(BaseModel):

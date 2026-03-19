@@ -133,13 +133,15 @@ async def auto_advance_overdue_bills(db: AsyncSession) -> int:
 
     advanced = 0
     for bill in overdue_bills:
-        new_due = advance_due_date(
-            frequency=bill.frequency,
-            current_due=bill.next_due_date,
-            day_of_week=bill.day_of_week,
-            day_of_month=bill.day_of_month,
-            month_of_year=bill.month_of_year,
-        )
+        new_due = bill.next_due_date
+        while new_due < today:
+            new_due = advance_due_date(
+                frequency=bill.frequency,
+                current_due=new_due,
+                day_of_week=bill.day_of_week,
+                day_of_month=bill.day_of_month,
+                month_of_year=bill.month_of_year,
+            )
         bill.next_due_date = new_due
         advanced += 1
 

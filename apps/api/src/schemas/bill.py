@@ -21,7 +21,7 @@ class BillCreateRequest(BaseModel):
 class BillUpdateRequest(BaseModel):
     name: str | None = None
     amount: str | None = None
-    frequency: str | None = None
+    frequency: str | None = Field(default=None, pattern="^(weekly|monthly|yearly)$")
     day_of_week: int | None = None
     day_of_month: int | None = None
     month_of_year: int | None = None

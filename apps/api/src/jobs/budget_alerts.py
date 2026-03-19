@@ -15,6 +15,8 @@ async def check_budget_alerts(db: AsyncSession) -> None:
     Uses dedup (type + reference_id + period_key) to ensure one alert per
     threshold per period.
     """
+    # TODO: N+1 query pattern — loads all budgets then queries spend per budget.
+    # Acceptable for B phase; at scale, batch by user or use a single aggregated query.
     result = await db.execute(select(Budget))
     budgets = result.scalars().all()
 

@@ -39,7 +39,10 @@ async def list_notifications(
         try:
             cursor_uuid = uuid.UUID(cursor)
             cursor_result = await db.execute(
-                select(Notification).where(Notification.id == cursor_uuid)
+                select(Notification).where(
+                    Notification.id == cursor_uuid,
+                    Notification.user_id == user.id,
+                )
             )
             cursor_notif = cursor_result.scalar_one_or_none()
             if cursor_notif:

@@ -99,8 +99,7 @@ async def request_export(
     db: AsyncSession = Depends(get_db),
 ):
     """Request data export (async). Sends download link via email."""
-    # In production, this would be an async background task.
-    # For B phase, run inline (data is small).
+    # B phase: runs inline. At scale, offload to background job.
     await generate_export(db, user)
     return {"detail": "Export started. You'll receive a download link via email."}
 

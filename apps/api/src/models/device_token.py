@@ -14,7 +14,7 @@ class DeviceToken(BaseModel):
     )
 
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     token: Mapped[str] = mapped_column(String(500), nullable=False)
     platform: Mapped[str] = mapped_column(String(20), nullable=False)
