@@ -31,7 +31,7 @@ export async function login(
   });
 
   if (!response.ok) {
-    const error = await response.json();
+    const error = await response.json().catch(() => ({ detail: undefined }));
     throw new Error(error.detail || "Login failed");
   }
 
@@ -56,7 +56,7 @@ export async function register(
   });
 
   if (!response.ok) {
-    const error = await response.json();
+    const error = await response.json().catch(() => ({ detail: undefined }));
     throw new Error(error.detail || "Registration failed");
   }
 
@@ -77,7 +77,7 @@ export async function verifyMfa(
   });
 
   if (!response.ok) {
-    const error = await response.json();
+    const error = await response.json().catch(() => ({ detail: undefined }));
     throw new Error(error.detail || "Invalid MFA code");
   }
 
@@ -98,7 +98,7 @@ export async function oauthLogin(
   });
 
   if (!response.ok) {
-    const error = await response.json();
+    const error = await response.json().catch(() => ({ detail: undefined }));
     throw new Error(error.detail || "OAuth login failed");
   }
 
