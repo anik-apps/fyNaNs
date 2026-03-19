@@ -8,6 +8,7 @@ from src.core.rate_limit import rate_limiter
 from src.routers import (
     accounts,
     auth,
+    bills,
     budgets,
     categories,
     health,
@@ -54,4 +55,5 @@ api_router.include_router(accounts.router)
 api_router.include_router(transactions.router)
 api_router.include_router(categories.router)
 api_router.include_router(budgets.router)
+api_router.include_router(bills.router)
 app.include_router(api_router)
