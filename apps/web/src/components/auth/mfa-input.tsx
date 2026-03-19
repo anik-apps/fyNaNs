@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -15,16 +15,22 @@ import { useAuth } from "@/hooks/use-auth";
 
 export function MfaInput() {
   const { verifyMfaCode } = useAuth();
-  const searchParams = useSearchParams();
-  const mfaToken = searchParams.get("token") || "";
+  const router = useRouter();
+  const [mfaToken, setMfaToken] = useState("");
   const [code, setCode] = useState(["", "", "", "", "", ""]);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
+    const token = sessionStorage.getItem("mfa_token");
+    if (!token) {
+      router.replace("/login");
+      return;
+    }
+    setMfaToken(token);
     inputRefs.current[0]?.focus();
-  }, []);
+  }, [router]);
 
   function handleChange(index: number, value: string) {
     if (!/^\d*$/.test(value)) return;
