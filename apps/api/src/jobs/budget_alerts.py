@@ -1,3 +1,4 @@
+import uuid
 from datetime import date
 
 from sqlalchemy import select
@@ -9,15 +10,20 @@ from src.services.budget import compute_current_spend
 from src.services.notification import create_notification
 
 
-async def check_budget_alerts(db: AsyncSession) -> None:
-    """Check all budgets and send alerts at 80% and 100% thresholds.
+async def check_budget_alerts(db: AsyncSession, user_id: uuid.UUID | None = None) -> None:
+    """Check budgets and send alerts at 80% and 100% thresholds.
+
+    Args:
+        user_id: If provided, only check this user's budgets (webhook path).
+                 If None, check all budgets (scheduled job path).
 
     Uses dedup (type + reference_id + period_key) to ensure one alert per
     threshold per period.
     """
-    # TODO: N+1 query pattern — loads all budgets then queries spend per budget.
-    # Acceptable for B phase; at scale, batch by user or use a single aggregated query.
-    result = await db.execute(select(Budget))
+    query = select(Budget)
+    if user_id:
+        query = query.where(Budget.user_id == user_id)
+    result = await db.execute(query)
     budgets = result.scalars().all()
 
     today = date.today()

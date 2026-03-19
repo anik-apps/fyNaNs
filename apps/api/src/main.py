@@ -59,7 +59,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Per-IP general rate limit (100/min)
         client_ip = request.client.host if request.client else "unknown"
         try:
-            rate_limiter.check(f"general:{client_ip}", max_requests=GENERAL_RATE_LIMIT, window_seconds=60)
+            rate_limiter.check(
+                f"general:{client_ip}", max_requests=GENERAL_RATE_LIMIT, window_seconds=60
+            )
         except Exception:
             return JSONResponse(status_code=429, content={"detail": "Too many requests"})
 

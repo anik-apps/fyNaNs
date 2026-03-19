@@ -15,7 +15,26 @@ async def check_bill_reminders(db: AsyncSession) -> None:
     """
     today = date.today()
 
-    # First, auto-advance any overdue bills
+    # Send overdue notifications before advancing
+    overdue_result = await db.execute(
+        select(Bill).where(
+            Bill.is_active.is_(True),
+            Bill.next_due_date < today,
+        )
+    )
+    for bill in overdue_result.scalars().all():
+        period_key = bill.next_due_date.isoformat()
+        await create_notification(
+            db=db,
+            user_id=bill.user_id,
+            notif_type="bill_overdue",
+            reference_id=bill.id,
+            period_key=period_key,
+            title=f"Overdue: {bill.name}",
+            body=f"{bill.name} (${bill.amount}) was due on {bill.next_due_date}",
+        )
+
+    # Auto-advance overdue bills to next future date
     await auto_advance_overdue_bills(db)
 
     # Find bills that need reminders

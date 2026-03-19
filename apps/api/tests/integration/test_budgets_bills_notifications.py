@@ -70,7 +70,6 @@ class TestBudgets:
         assert resp.json()["amount_limit"] == "750.00"
 
     def test_delete_budget(self, client: httpx.Client, auth_headers):
-        cat_id = self._get_category_id(client, auth_headers)
         # Create a custom category for a deletable budget
         custom_cat = client.post("/categories", headers=auth_headers, json={
             "name": _unique("budget-del-cat"),
