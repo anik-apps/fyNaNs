@@ -480,6 +480,11 @@ async def handle_webhook_event(
             if await has_credit_accounts(db, plaid_item):
                 await sync_liabilities(db, plaid_item)
 
+            # Trigger budget alerts after transaction sync
+            from src.jobs.budget_alerts import check_budget_alerts
+
+            await check_budget_alerts(db)
+
     elif webhook_type == "ITEM" and webhook_code == "ERROR":
         result = await db.execute(
             select(PlaidItem).where(PlaidItem.item_id == item_id)

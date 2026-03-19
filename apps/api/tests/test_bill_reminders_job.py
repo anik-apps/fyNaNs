@@ -11,7 +11,7 @@ from src.models.user_settings import UserSettings
 
 
 @pytest.mark.asyncio
-@patch("src.services.notification.create_notification")
+@patch("src.jobs.bill_reminders.create_notification")
 async def test_bill_reminders_sends_for_upcoming(mock_notif, db_session: AsyncSession):
     from src.jobs.bill_reminders import check_bill_reminders
 
@@ -50,7 +50,7 @@ async def test_bill_reminders_sends_for_upcoming(mock_notif, db_session: AsyncSe
 
 
 @pytest.mark.asyncio
-@patch("src.services.notification.create_notification")
+@patch("src.jobs.bill_reminders.create_notification")
 async def test_bill_reminders_skips_inactive(mock_notif, db_session: AsyncSession):
     from src.jobs.bill_reminders import check_bill_reminders
 
@@ -84,7 +84,7 @@ async def test_bill_reminders_skips_inactive(mock_notif, db_session: AsyncSessio
 
 
 @pytest.mark.asyncio
-@patch("src.services.notification.create_notification")
+@patch("src.jobs.bill_reminders.create_notification")
 async def test_bill_reminders_auto_advances_overdue(
     mock_notif, db_session: AsyncSession
 ):
