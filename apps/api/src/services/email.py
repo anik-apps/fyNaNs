@@ -22,3 +22,24 @@ def send_password_reset_email(to_email: str, reset_token: str) -> None:
             f"here</a> to reset your password. This link expires in 1 hour.</p>"
         ),
     })
+
+
+def send_export_email(to_email: str, zip_data: bytes) -> None:
+    """Send data export download link via email."""
+    if not settings.resend_api_key:
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.info(
+            "[DEV] Export generated for %s (%d bytes)", to_email, len(zip_data)
+        )
+        return
+
+    # In production: upload zip_data to OCI Object Storage,
+    # generate a signed URL, and email it.
+    import logging
+
+    logger = logging.getLogger(__name__)
+    logger.info(
+        "[DEV] Export generated for %s (%d bytes)", to_email, len(zip_data)
+    )

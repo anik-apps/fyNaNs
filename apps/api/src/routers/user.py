@@ -12,6 +12,7 @@ from src.schemas.user import (
     SettingsResponse,
     SettingsUpdateRequest,
 )
+from src.services.export import generate_export
 
 router = APIRouter(prefix="/user", tags=["user"])
 
@@ -81,3 +82,15 @@ async def update_settings(
     await db.commit()
     await db.refresh(settings)
     return settings
+
+
+@router.post("/export", status_code=202)
+async def request_export(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Request data export (async). Sends download link via email."""
+    # In production, this would be an async background task.
+    # For B phase, run inline (data is small).
+    await generate_export(db, user)
+    return {"detail": "Export started. You'll receive a download link via email."}
