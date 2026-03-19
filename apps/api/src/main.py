@@ -11,6 +11,7 @@ from src.routers import (
     bills,
     budgets,
     categories,
+    device_tokens,
     health,
     notifications,
     plaid,
@@ -58,4 +59,5 @@ api_router.include_router(categories.router)
 api_router.include_router(budgets.router)
 api_router.include_router(bills.router)
 api_router.include_router(notifications.router)
+api_router.include_router(device_tokens.router)
 app.include_router(api_router)
