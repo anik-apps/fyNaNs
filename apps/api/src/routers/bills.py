@@ -76,7 +76,7 @@ async def create_bill_endpoint(
         )
         return _bill_to_response(bill)
     except BillError as e:
-        raise HTTPException(status_code=e.status_code, detail=e.message)
+        raise HTTPException(status_code=e.status_code, detail=e.message) from None
 
 
 @router.get("/upcoming", response_model=list[BillResponse])

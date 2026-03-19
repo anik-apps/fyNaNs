@@ -5,7 +5,6 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.device_token import DeviceToken
-from src.models.notification import Notification
 from src.models.user import User
 
 

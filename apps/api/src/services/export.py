@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.account import Account
 from src.models.bill import Bill
 from src.models.budget import Budget
-from src.models.notification import Notification
 from src.models.transaction import Transaction
 from src.models.user import User
 from src.services.email import send_export_email
@@ -18,7 +17,7 @@ from src.services.email import send_export_email
 
 class DateTimeEncoder(json.JSONEncoder):
     def default(self, obj):
-        if isinstance(obj, (datetime, date)):
+        if isinstance(obj, datetime | date):
             return obj.isoformat()
         if isinstance(obj, uuid.UUID):
             return str(obj)

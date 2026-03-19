@@ -70,7 +70,7 @@ async def create_budget_endpoint(
             updated_at=budget.updated_at,
         )
     except BudgetError as e:
-        raise HTTPException(status_code=e.status_code, detail=e.message)
+        raise HTTPException(status_code=e.status_code, detail=e.message) from None
 
 
 @router.get("/overview", response_model=list[BudgetOverviewItem])

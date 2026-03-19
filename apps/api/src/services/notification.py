@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 from sqlalchemy import select
@@ -59,7 +59,7 @@ async def create_notification(
         reference_id=reference_id,
         period_key=period_key,
         channel=channel,
-        sent_at=datetime.now(timezone.utc),
+        sent_at=datetime.now(UTC),
     )
     db.add(notif)
     await db.commit()

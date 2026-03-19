@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -31,7 +31,7 @@ async def test_fallback_sync_syncs_stale_items(
         item_id="item-stale-fb",
         institution_name="Stale Bank",
         status="active",
-        last_synced_at=datetime.now(timezone.utc) - timedelta(days=4),
+        last_synced_at=datetime.now(UTC) - timedelta(days=4),
     )
     db_session.add(stale_item)
 
@@ -42,7 +42,7 @@ async def test_fallback_sync_syncs_stale_items(
         item_id="item-recent-fb",
         institution_name="Recent Bank",
         status="active",
-        last_synced_at=datetime.now(timezone.utc) - timedelta(hours=12),
+        last_synced_at=datetime.now(UTC) - timedelta(hours=12),
     )
     db_session.add(recent_item)
     await db_session.commit()
