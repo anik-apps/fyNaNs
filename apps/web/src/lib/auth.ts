@@ -22,7 +22,7 @@ export interface RegisterData {
 
 export async function login(
   credentials: LoginCredentials
-): Promise<{ user: AuthUser; requires_mfa?: boolean; mfa_token?: string }> {
+): Promise<{ user: AuthUser | null; requires_mfa?: boolean; mfa_token?: string }> {
   const response = await fetch(`${API_URL}/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -37,32 +37,41 @@ export async function login(
 
   const data = await response.json();
 
-  if (data.requires_mfa) {
-    return { user: data.user, requires_mfa: true, mfa_token: data.mfa_token };
+  if (data.mfa_required) {
+    return { user: null, requires_mfa: true, mfa_token: data.access_token };
   }
 
   setAccessToken(data.access_token);
-  return { user: data.user };
+
+  // Fetch user profile after login
+  const user = await fetchProfile();
+  return { user };
+}
+
+async function fetchProfile(): Promise<AuthUser> {
+  const { apiFetch } = await import("./api-client");
+  return apiFetch<AuthUser>("/api/user/profile");
 }
 
 export async function register(
   data: RegisterData
 ): Promise<{ user: AuthUser }> {
-  const response = await fetch(`${API_URL}/api/auth/register`, {
+  // Step 1: Register the user
+  const regResponse = await fetch(`${API_URL}/api/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
     body: JSON.stringify(data),
   });
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: undefined }));
+  if (!regResponse.ok) {
+    const error = await regResponse.json().catch(() => ({ detail: undefined }));
     throw new Error(error.detail || "Registration failed");
   }
 
-  const result = await response.json();
-  setAccessToken(result.access_token);
-  return { user: result.user };
+  // Step 2: Auto-login after registration
+  const loginResult = await login({ email: data.email, password: data.password });
+  return { user: loginResult.user! };
 }
 
 export async function verifyMfa(
@@ -71,9 +80,12 @@ export async function verifyMfa(
 ): Promise<{ user: AuthUser }> {
   const response = await fetch(`${API_URL}/api/auth/mfa/verify`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${mfaToken}`,
+    },
     credentials: "include",
-    body: JSON.stringify({ mfa_token: mfaToken, code }),
+    body: JSON.stringify({ code }),
   });
 
   if (!response.ok) {
@@ -83,7 +95,8 @@ export async function verifyMfa(
 
   const data = await response.json();
   setAccessToken(data.access_token);
-  return { user: data.user };
+  const user = await fetchProfile();
+  return { user };
 }
 
 export async function oauthLogin(
@@ -94,7 +107,7 @@ export async function oauthLogin(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: JSON.stringify({ token }),
+    body: JSON.stringify({ id_token: token }),
   });
 
   if (!response.ok) {
@@ -104,7 +117,8 @@ export async function oauthLogin(
 
   const data = await response.json();
   setAccessToken(data.access_token);
-  return { user: data.user };
+  const user = await fetchProfile();
+  return { user };
 }
 
 export async function logout(): Promise<void> {
@@ -126,7 +140,7 @@ export async function refreshSession(): Promise<AuthUser | null> {
 
     const data = await response.json();
     setAccessToken(data.access_token);
-    return data.user;
+    return fetchProfile();
   } catch {
     return null;
   }

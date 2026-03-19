@@ -79,7 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (credentials: LoginCredentials) => {
     const result = await loginFn(credentials);
-    if (!result.requires_mfa) {
+    if (!result.requires_mfa && result.user) {
       setUser(result.user);
     }
     return {
