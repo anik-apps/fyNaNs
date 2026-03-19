@@ -78,9 +78,12 @@ export async function apiFetch<T>(
     credentials: "include",
   });
 
-  // If 401, try to refresh and retry once
+  // If 401, force a refresh (token may be revoked, not just expired) and retry once
   if (response.status === 401) {
-    const newToken = await getValidToken();
+    if (!refreshPromise) {
+      refreshPromise = refreshAccessToken().finally(() => { refreshPromise = null; });
+    }
+    const newToken = await refreshPromise;
     if (newToken) {
       headers["Authorization"] = `Bearer ${newToken}`;
       response = await fetch(`${API_URL}${path}`, {

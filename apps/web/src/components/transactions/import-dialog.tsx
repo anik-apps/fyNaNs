@@ -10,20 +10,20 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Upload } from "lucide-react";
-import { API_URL } from "@/lib/constants";
-import { getAccessToken } from "@/lib/api-client";
+import { apiFetch } from "@/lib/api-client";
 
 interface ImportResult {
   imported: number;
-  skipped: number;
-  errors: string[];
+  skipped_duplicates: number;
+  errors: Array<{ row: number; reason: string }>;
 }
 
 interface ImportDialogProps {
+  accountId?: string;
   onImported?: () => void;
 }
 
-export function ImportDialog({ onImported }: ImportDialogProps) {
+export function ImportDialog({ accountId, onImported }: ImportDialogProps) {
   const [open, setOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -54,20 +54,10 @@ export function ImportDialog({ onImported }: ImportDialogProps) {
     formData.append("file", file);
 
     try {
-      const token = getAccessToken();
-      const response = await fetch(`${API_URL}/api/transactions/import`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        credentials: "include",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.detail || "Import failed");
-      }
-
-      const data = await response.json();
+      const data = await apiFetch<ImportResult>(
+        `/api/transactions/import${accountId ? `?account_id=${accountId}` : ""}`,
+        { method: "POST", body: formData }
+      );
       setResult(data);
       onImported?.();
     } catch (err) {
@@ -128,13 +118,13 @@ export function ImportDialog({ onImported }: ImportDialogProps) {
                 Import complete
               </p>
               <p>Imported: {result.imported}</p>
-              <p>Skipped: {result.skipped}</p>
+              <p>Skipped: {result.skipped_duplicates}</p>
               {result.errors.length > 0 && (
                 <div className="mt-2">
                   <p className="text-destructive">Errors:</p>
                   <ul className="list-disc list-inside text-xs">
                     {result.errors.slice(0, 5).map((err, i) => (
-                      <li key={i}>{err}</li>
+                      <li key={i}>Row {err.row}: {err.reason}</li>
                     ))}
                   </ul>
                 </div>
