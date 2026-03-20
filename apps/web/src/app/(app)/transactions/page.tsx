@@ -47,7 +47,7 @@ export default function TransactionsPage() {
       try {
         setFilterError(null);
         const [cats, accts] = await Promise.all([
-          apiFetch<Category[]>("/api/categories"),
+          apiFetch<Category[]>("/api/categories/with-transactions"),
           apiFetch<Account[]>("/api/accounts"),
         ]);
         setCategories(cats);
