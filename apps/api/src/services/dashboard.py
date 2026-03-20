@@ -274,15 +274,13 @@ async def _get_spending_comparison(
 
     income_categories = {"Income", "Salary", "Freelance", "Other Income", "Investments"}
     transfer_categories = {"Transfer"}
-    depository_types = {"checking", "savings"}
 
     from src.models.category import Category
 
     async def _sum_spending(start: date, end: date) -> Decimal:
         result = await db.execute(
-            select(Transaction.amount, Category.name, Account.type)
+            select(Transaction.amount, Category.name)
             .outerjoin(Category, Transaction.category_id == Category.id)
-            .join(Account, Transaction.account_id == Account.id)
             .where(
                 Transaction.user_id == user_id,
                 Transaction.date >= start,
@@ -290,14 +288,12 @@ async def _get_spending_comparison(
             )
         )
         total = 0.0
-        for amt_val, cat_name, acct_type in result.all():
+        for amt_val, cat_name in result.all():
             amt = float(amt_val)
             if cat_name in transfer_categories:
                 continue
-            if cat_name in income_categories:
-                continue
-            if acct_type in depository_types and amt < 0:
-                continue  # Negative in depository = income, skip
+            if cat_name in income_categories or amt < 0:
+                continue  # Income — skip
             total += abs(amt)
         return Decimal(str(round(total, 2)))
 
