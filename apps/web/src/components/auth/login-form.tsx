@@ -45,7 +45,8 @@ export function LoginForm() {
     try {
       const result = await login(data);
       if (result.requires_mfa && result.mfa_token) {
-        sessionStorage.setItem("mfa_token", result.mfa_token);
+        const { setMfaToken } = await import("@/lib/mfa-store");
+        setMfaToken(result.mfa_token);
         router.push(ROUTES.MFA);
       }
     } catch (err) {

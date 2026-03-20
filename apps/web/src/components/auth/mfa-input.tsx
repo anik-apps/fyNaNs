@@ -23,7 +23,8 @@ export function MfaInput() {
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
-    const token = sessionStorage.getItem("mfa_token");
+    const { getMfaToken } = require("@/lib/mfa-store");
+    const token = getMfaToken();
     if (!token) {
       router.replace("/login");
       return;
