@@ -1,0 +1,222 @@
+import React, { useState, useCallback } from "react";
+import {
+  View,
+  Text,
+  FlatList,
+  StyleSheet,
+  RefreshControl,
+  ActivityIndicator,
+} from "react-native";
+import { useLocalSearchParams, Stack } from "expo-router";
+import { useApi } from "@/src/hooks/useApi";
+import { apiFetch } from "@/src/lib/api-client";
+import { useTheme } from "@/src/providers/ThemeProvider";
+import { ErrorView } from "@/src/components/shared/ErrorView";
+import { formatCurrency, formatRelativeDate } from "@/src/lib/utils";
+import { ACCOUNT_TYPE_LABELS } from "@fynans/shared-types";
+
+const INCOME_CATEGORIES = new Set([
+  "Income",
+  "Salary",
+  "Freelance",
+  "Other Income",
+  "Investments",
+]);
+const TRANSFER_CATEGORIES = new Set(["Transfer"]);
+
+function getDisplayType(
+  amount: number,
+  categoryName: string
+): "income" | "expense" | "transfer" {
+  if (TRANSFER_CATEGORIES.has(categoryName)) return "transfer";
+  if (INCOME_CATEGORIES.has(categoryName)) return "income";
+  return amount < 0 ? "income" : "expense";
+}
+
+export default function AccountDetailScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const { theme } = useTheme();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const { data: account, isLoading, error, refresh } = useApi<any>(() =>
+    apiFetch(`/api/accounts/${id}`)
+  );
+
+  const {
+    data: txData,
+    isLoading: txLoading,
+    refresh: refreshTx,
+  } = useApi<any>(() =>
+    apiFetch(`/api/transactions?account_id=${id}&limit=50`)
+  );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([refresh(), refreshTx()]);
+    setRefreshing(false);
+  }, [refresh, refreshTx]);
+
+  if (isLoading) {
+    return (
+      <View
+        style={[styles.center, { backgroundColor: theme.colors.background }]}
+      >
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+      </View>
+    );
+  }
+
+  if (error || !account) {
+    return (
+      <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
+        <ErrorView
+          message={error?.message || "Account not found"}
+          onRetry={refresh}
+        />
+      </View>
+    );
+  }
+
+  const transactions = txData?.items || txData || [];
+
+  return (
+    <View
+      style={[styles.container, { backgroundColor: theme.colors.surface }]}
+    >
+      <Stack.Screen
+        options={{ headerShown: true, title: account.name }}
+      />
+
+      <FlatList
+        data={transactions}
+        keyExtractor={(item: any) => item.id}
+        ListHeaderComponent={
+          <View
+            style={[
+              styles.header,
+              { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
+            ]}
+          >
+            <Text style={[styles.balance, { color: theme.colors.text }]}>
+              {formatCurrency(account.balance)}
+            </Text>
+            <Text
+              style={[styles.accountType, { color: theme.colors.textSecondary }]}
+            >
+              {ACCOUNT_TYPE_LABELS[account.type as keyof typeof ACCOUNT_TYPE_LABELS] || account.type}
+              {account.institution_name
+                ? ` · ${account.institution_name}`
+                : ""}
+            </Text>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+              Transactions
+            </Text>
+          </View>
+        }
+        renderItem={({ item }: { item: any }) => {
+          const numAmount =
+            typeof item.amount === "string"
+              ? parseFloat(item.amount)
+              : item.amount;
+          const absAmount = Math.abs(numAmount);
+          const displayType = getDisplayType(numAmount, item.category_name);
+          const amountColor =
+            displayType === "income"
+              ? theme.colors.success
+              : displayType === "expense"
+              ? theme.colors.error
+              : theme.colors.textSecondary;
+          const prefix =
+            displayType === "income"
+              ? "+"
+              : displayType === "expense"
+              ? "-"
+              : "";
+
+          return (
+            <View
+              style={[
+                styles.txRow,
+                { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
+              ]}
+            >
+              <View style={styles.txInfo}>
+                <Text
+                  style={[styles.txName, { color: theme.colors.text }]}
+                  numberOfLines={1}
+                >
+                  {item.merchant_name || item.description}
+                </Text>
+                <Text
+                  style={[styles.txMeta, { color: theme.colors.textSecondary }]}
+                >
+                  {item.category_name} · {formatRelativeDate(item.date)}
+                </Text>
+              </View>
+              <Text style={[styles.txAmount, { color: amountColor }]}>
+                {prefix}
+                {formatCurrency(absAmount)}
+              </Text>
+            </View>
+          );
+        }}
+        ListEmptyComponent={
+          txLoading ? (
+            <ActivityIndicator
+              size="small"
+              color={theme.colors.primary}
+              style={{ marginTop: 24 }}
+            />
+          ) : (
+            <Text
+              style={[
+                styles.emptyText,
+                { color: theme.colors.textSecondary },
+              ]}
+            >
+              No transactions found
+            </Text>
+          )
+        }
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        contentContainerStyle={styles.listContent}
+      />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  header: {
+    padding: 16,
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  balance: { fontSize: 32, fontWeight: "bold" },
+  accountType: { fontSize: 14, marginTop: 4 },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    marginTop: 20,
+  },
+  txRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginHorizontal: 16,
+    borderBottomWidth: 1,
+  },
+  txInfo: { flex: 1, marginRight: 12 },
+  txName: { fontSize: 14, fontWeight: "500" },
+  txMeta: { fontSize: 12, marginTop: 2 },
+  txAmount: { fontSize: 14, fontWeight: "600" },
+  emptyText: { textAlign: "center", marginTop: 24, fontSize: 14 },
+  listContent: { paddingBottom: 24 },
+});
