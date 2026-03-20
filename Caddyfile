@@ -1,0 +1,38 @@
+{
+    # Global options
+    email {$ACME_EMAIL}
+    # Uncomment for staging certs during testing:
+    # acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+{$DOMAIN} {
+    # API routes -> FastAPI backend
+    # FastAPI uses an APIRouter with prefix="/api", so all backend
+    # endpoints are under /api/*
+    handle /api/* {
+        reverse_proxy api:8000
+    }
+
+    # Everything else -> Next.js frontend
+    handle {
+        reverse_proxy web:3000
+    }
+
+    # Security headers
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy strict-origin-when-cross-origin
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        -Server
+    }
+
+    # Logging
+    log {
+        output file /var/log/caddy/access.log {
+            roll_size 10mb
+            roll_keep 5
+        }
+    }
+}
