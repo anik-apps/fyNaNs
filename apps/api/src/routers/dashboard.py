@@ -157,3 +157,114 @@ async def net_worth_history(
         points=points,
         current_net_worth=round(current_nw, 2),
     )
+
+
+class SpendingBarPoint(BaseModel):
+    label: str  # "Jan 2026", "Feb 2026", etc.
+    period_start: str
+    spending: float
+    income: float
+
+
+class SpendingHistoryResponse(BaseModel):
+    points: list[SpendingBarPoint]
+    view: str  # "monthly" or "yearly"
+
+
+@router.get("/spending-history", response_model=SpendingHistoryResponse)
+async def spending_history(
+    view: str = Query("monthly", regex="^(monthly|yearly)$"),
+    months: int = Query(6, ge=1, le=60),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get monthly or yearly spending/income totals for bar chart.
+
+    Uses category to determine income vs expense (same logic as NW history,
+    since Plaid sandbox data has inconsistent signs).
+    """
+    user_id = str(current_user.id)
+    today = date.today()
+
+    income_categories = {"Income", "Salary", "Freelance", "Other Income", "Investments"}
+    transfer_categories = {"Transfer"}
+
+    # Determine periods
+    points: list[SpendingBarPoint] = []
+
+    if view == "monthly":
+        for i in range(months - 1, -1, -1):
+            # Calculate month start/end
+            m = today.month - i
+            y = today.year
+            while m <= 0:
+                m += 12
+                y -= 1
+            month_start = date(y, m, 1)
+            month_end = date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)
+
+            label = month_start.strftime("%b %Y")
+            spending, income = await _compute_period_totals(
+                db, user_id, month_start, month_end,
+                income_categories, transfer_categories,
+            )
+            points.append(SpendingBarPoint(
+                label=label,
+                period_start=month_start.isoformat(),
+                spending=round(spending, 2),
+                income=round(income, 2),
+            ))
+    else:  # yearly
+        num_years = min(months // 12 + 1, 10)
+        for i in range(num_years - 1, -1, -1):
+            y = today.year - i
+            year_start = date(y, 1, 1)
+            year_end = date(y + 1, 1, 1)
+            label = str(y)
+            spending, income = await _compute_period_totals(
+                db, user_id, year_start, year_end,
+                income_categories, transfer_categories,
+            )
+            points.append(SpendingBarPoint(
+                label=label,
+                period_start=year_start.isoformat(),
+                spending=round(spending, 2),
+                income=round(income, 2),
+            ))
+
+    return SpendingHistoryResponse(points=points, view=view)
+
+
+async def _compute_period_totals(
+    db: AsyncSession,
+    user_id: str,
+    period_start: date,
+    period_end: date,
+    income_categories: set[str],
+    transfer_categories: set[str],
+) -> tuple[float, float]:
+    """Compute total spending and income for a period using category-based logic."""
+    from src.models.category import Category
+
+    result = await db.execute(
+        select(Transaction.amount, Category.name)
+        .outerjoin(Category, Transaction.category_id == Category.id)
+        .where(
+            Transaction.user_id == user_id,
+            Transaction.date >= period_start,
+            Transaction.date < period_end,
+        )
+    )
+
+    spending = 0.0
+    income = 0.0
+    for amount, cat_name in result.all():
+        abs_amt = abs(float(amount))
+        if cat_name in transfer_categories:
+            continue
+        elif cat_name in income_categories:
+            income += abs_amt
+        else:
+            spending += abs_amt
+
+    return spending, income
