@@ -33,6 +33,7 @@ class TransactionResponse(BaseModel):
     category_name: str | None = None
     category_color: str | None = None
     account_name: str | None = None
+    account_type: str | None = None  # checking, savings, credit, loan, investment
     is_pending: bool
     is_manual: bool
     notes: str | None

@@ -38,6 +38,7 @@ def _txn_to_response(
     category_name: str | None = None,
     category_color: str | None = None,
     account_name: str | None = None,
+    account_type: str | None = None,
 ) -> TransactionResponse:
     return TransactionResponse(
         id=txn.id,
@@ -50,6 +51,7 @@ def _txn_to_response(
         category_name=category_name or "Uncategorized",
         category_color=category_color or "#6B7280",
         account_name=account_name or "Unknown",
+        account_type=account_type or "checking",
         is_pending=txn.is_pending,
         is_manual=txn.is_manual,
         notes=txn.notes,
@@ -91,9 +93,9 @@ async def list_transactions_endpoint(
     acct_map: dict = {}
     if account_ids:
         acct_result = await db.execute(
-            select(Account.id, Account.name).where(Account.id.in_(account_ids))
+            select(Account.id, Account.name, Account.type).where(Account.id.in_(account_ids))
         )
-        acct_map = dict(acct_result.all())
+        acct_map = {row[0]: (row[1], row[2]) for row in acct_result.all()}
 
     cat_map: dict = {}
     if category_ids:
@@ -107,11 +109,13 @@ async def list_transactions_endpoint(
     items = []
     for t in transactions:
         cat_name, cat_color = cat_map.get(t.category_id, ("Uncategorized", "#6B7280"))
+        acct_name, acct_type = acct_map.get(t.account_id, ("Unknown", "checking"))
         items.append(_txn_to_response(
             t,
             category_name=cat_name,
             category_color=cat_color,
-            account_name=acct_map.get(t.account_id, "Unknown"),
+            account_name=acct_name,
+            account_type=acct_type,
         ))
 
     return TransactionListResponse(items=items, next_cursor=next_cursor)
