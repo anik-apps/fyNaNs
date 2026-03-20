@@ -128,10 +128,34 @@ class TestPlaidSandboxTransactions:
         assert len(platypus_accounts) > 0
 
     def test_transactions_sync(self, client, plaid_test_user, exchanged_item):
-        """Sandbox should generate test transactions after linking."""
+        """Sandbox should generate test transactions after linking.
+
+        In CI, Plaid webhooks cannot reach localhost, so we must explicitly
+        trigger a transaction sync before polling for results.
+        """
+        item_id = str(exchanged_item["plaid_item_id"])
+        headers = plaid_test_user["headers"]
+
+        # Explicitly trigger a sync — Plaid sandbox has transactions
+        # available immediately, but webhooks won't arrive in CI.
+        # Retry the sync a few times since Plaid sandbox may need a
+        # moment after token exchange before transactions are ready.
+        synced = False
+        for _attempt in range(5):
+            sync_resp = client.post(
+                f"/plaid/items/{item_id}/sync", headers=headers,
+            )
+            if sync_resp.status_code == 200:
+                sync_data = sync_resp.json()
+                if sync_data.get("added", 0) > 0:
+                    synced = True
+                    break
+            time.sleep(2)
+
+        # Now poll the transactions endpoint
         transactions = []
-        for _ in range(15):
-            resp = client.get("/transactions", headers=plaid_test_user["headers"])
+        for _ in range(10):
+            resp = client.get("/transactions", headers=headers)
             assert resp.status_code == 200
             data = resp.json()
             transactions = data if isinstance(data, list) else data.get("items", [])
@@ -139,4 +163,6 @@ class TestPlaidSandboxTransactions:
                 break
             time.sleep(1)
 
-        assert len(transactions) > 0, "Expected sandbox transactions after sync"
+        assert len(transactions) > 0, (
+            f"Expected sandbox transactions after sync (sync triggered: {synced})"
+        )
