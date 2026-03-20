@@ -181,12 +181,19 @@ jobs:
             sleep 1
           done
           curl -f http://localhost:8888/api/health || exit 1
+        env:
+          PLAID_CLIENT_ID: ${{ secrets.PLAID_CLIENT_ID }}
+          PLAID_SECRET: ${{ secrets.PLAID_SECRET }}
+          PLAID_ENV: sandbox
 
       - name: Run API integration tests
         working-directory: apps/api
         run: poetry run pytest tests/integration/ -v --tb=short --junitxml=junit-integration-results.xml
         env:
           API_BASE_URL: http://localhost:8888/api
+          PLAID_CLIENT_ID: ${{ secrets.PLAID_CLIENT_ID }}
+          PLAID_SECRET: ${{ secrets.PLAID_SECRET }}
+          PLAID_ENV: sandbox
 
       - name: Run Playwright E2E tests
         working-directory: apps/web
