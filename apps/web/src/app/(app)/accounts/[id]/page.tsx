@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,13 @@ import { TransactionRow } from "@/components/transactions/transaction-row";
 import {
   Building2, CreditCard, Landmark, PiggyBank, Trash2, TrendingUp, Wallet,
 } from "lucide-react";
+import {
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+} from "recharts";
 
 interface AccountDetail {
   id: string;
@@ -111,6 +118,29 @@ export default function AccountDetailPage() {
     }
   }, [account, router]);
 
+  // Compute spending by category for pie chart (exclude income and transfers)
+  // Must be before early returns to satisfy React hooks rules
+  const categoryBreakdown = useMemo(() => {
+    const incomeCategories = new Set(["Income", "Salary", "Freelance", "Other Income", "Investments"]);
+    const transferCategories = new Set(["Transfer"]);
+    const map: Record<string, { name: string; color: string; total: number }> = {};
+
+    for (const txn of transactions) {
+      const cat = txn.category_name || "Uncategorized";
+      if (incomeCategories.has(cat) || transferCategories.has(cat)) continue;
+
+      const amt = Math.abs(parseFloat(txn.amount));
+      if (!map[cat]) {
+        map[cat] = { name: cat, color: txn.category_color || "#6b7280", total: 0 };
+      }
+      map[cat].total += amt;
+    }
+
+    return Object.values(map)
+      .filter((c) => c.total > 0)
+      .sort((a, b) => b.total - a.total);
+  }, [transactions]);
+
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -199,6 +229,71 @@ export default function AccountDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {categoryBreakdown.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Spending by Category
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-4">
+              <div className="w-40 h-40 flex-shrink-0">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={categoryBreakdown}
+                      dataKey="total"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={35}
+                      outerRadius={65}
+                      paddingAngle={2}
+                      strokeWidth={0}
+                    >
+                      {categoryBreakdown.map((entry, i) => (
+                        <Cell key={i} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value: number) => formatCurrency(value)}
+                      contentStyle={{
+                        fontSize: "12px",
+                        borderRadius: "6px",
+                        border: "1px solid var(--border)",
+                        background: "var(--popover)",
+                      }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="flex-1 space-y-1.5 overflow-hidden">
+                {categoryBreakdown.slice(0, 8).map((cat) => (
+                  <div key={cat.name} className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span
+                        className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: cat.color }}
+                      />
+                      <span className="truncate">{cat.name}</span>
+                    </div>
+                    <span className="font-medium ml-2 whitespace-nowrap">
+                      {formatCurrency(cat.total)}
+                    </span>
+                  </div>
+                ))}
+                {categoryBreakdown.length > 8 && (
+                  <p className="text-xs text-muted-foreground">
+                    +{categoryBreakdown.length - 8} more
+                  </p>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
