@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 class LinkTokenResponse(BaseModel):
     link_token: str
-    expiration: str
+    expiration: datetime | str  # Plaid SDK returns datetime, serialize either
 
 
 class ExchangeTokenRequest(BaseModel):
