@@ -200,6 +200,7 @@ _PLAID_CATEGORY_MAP: dict[str, str] = {
     "TRANSFER_OUT": "Transfer",
     "LOAN_PAYMENTS": "Transfer",
     "BANK_FEES": "Fees & Charges",
+    "INTEREST_EARNED": "Income",
     "ENTERTAINMENT": "Entertainment",
     "FOOD_AND_DRINK": "Food & Drink",
     "GENERAL_MERCHANDISE": "Shopping",

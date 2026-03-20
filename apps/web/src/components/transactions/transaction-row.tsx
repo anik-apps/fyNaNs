@@ -86,8 +86,12 @@ export function TransactionRow({
   is_pending,
 }: TransactionRowProps) {
   const numAmount = parseFloat(amount);
-  const isExpense = numAmount > 0;
-  const isTransfer = category_name === "Transfer" || category_name === "Income";
+  // Plaid convention: positive = money out of account, negative = money into account.
+  // For user display: positive (outflow) = red, negative (inflow) = green.
+  // Exception: transfers shown in neutral gray.
+  const isOutflow = numAmount > 0;
+  const isTransfer = category_name === "Transfer";
+  const isIncome = category_name === "Income";
   const CategoryIcon = CATEGORY_ICONS[category_name] || Package;
   const color = category_color || "#6b7280";
 
@@ -137,24 +141,27 @@ export function TransactionRow({
 
       {/* Amount */}
       <div className="text-right flex items-center gap-1.5">
-        {!isTransfer && (
-          isExpense ? (
+        {!(isTransfer || isIncome) && (
+          isOutflow ? (
             <ArrowUpRight className="w-3 h-3 text-red-500 dark:text-red-400" />
           ) : (
             <ArrowDownLeft className="w-3 h-3 text-green-500 dark:text-green-400" />
           )
+        )}
+        {isIncome && (
+          <ArrowDownLeft className="w-3 h-3 text-green-500 dark:text-green-400" />
         )}
         <span
           className={cn(
             "text-sm font-semibold whitespace-nowrap",
             isTransfer
               ? "text-muted-foreground"
-              : isExpense
-                ? "text-red-600 dark:text-red-400"
-                : "text-green-600 dark:text-green-400"
+              : isIncome || !isOutflow
+                ? "text-green-600 dark:text-green-400"
+                : "text-red-600 dark:text-red-400"
           )}
         >
-          {!isTransfer && (isExpense ? "-" : "+")}
+          {isOutflow && !isTransfer ? "-" : !isOutflow && !isTransfer ? "+" : ""}
           {formatCurrency(Math.abs(numAmount))}
         </span>
       </div>
