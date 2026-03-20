@@ -86,10 +86,12 @@ async def net_worth_history(
     row = acct_result.one()
     current_nw = float(row.assets) - float(row.liabilities)
 
-    # Get all transactions in the period, ordered by date desc
-    # We'll work backwards: for each past date, subtract transactions after that date
+    # Get all transactions in the period with their categories
+    from src.models.category import Category
+
     txn_result = await db.execute(
-        select(Transaction.date, Transaction.amount, Transaction.account_id)
+        select(Transaction.date, Transaction.amount, Category.name)
+        .outerjoin(Category, Transaction.category_id == Category.id)
         .where(
             Transaction.user_id == user_id,
             Transaction.date >= start_date,
@@ -98,17 +100,29 @@ async def net_worth_history(
     )
     transactions = txn_result.all()
 
-    # Net worth impact: positive amount = NW decreases (both asset and liability accounts).
-    # We reverse transactions to compute past NW from current NW.
+    # Determine NW impact per transaction using category as the source of truth.
+    # Plaid sandbox data has inconsistent signs (income sometimes positive),
+    # so we use category to determine direction:
+    #   - Income/Transfer-in categories: NW increased (regardless of sign)
+    #   - Transfer categories: NW unchanged (internal move)
+    #   - Everything else (expenses): NW decreased
+    income_categories = {"Income", "Salary", "Freelance", "Other Income", "Investments"}
+    transfer_categories = {"Transfer"}
 
-    # Build cumulative daily net worth deltas (from today backwards)
     daily_deltas: dict[date, float] = {}
-    for txn_date, amount, _acct_id in transactions:
+    for txn_date, amount, cat_name in transactions:
         d = txn_date if isinstance(txn_date, date) else date.fromisoformat(str(txn_date))
-        delta = float(amount)  # positive = NW decreased
-        # For asset accounts: money out (+amount) means NW went down
-        # For liability accounts: charge (+amount) means more debt = NW went down
-        # Both cases: positive amount = negative NW impact
+        abs_amount = abs(float(amount))
+
+        if cat_name in transfer_categories:
+            continue  # Transfers don't affect NW
+        elif cat_name in income_categories:
+            # Income increased NW → to reverse going backwards, subtract
+            delta = -abs_amount
+        else:
+            # Expense decreased NW → to reverse going backwards, add
+            delta = abs_amount
+
         daily_deltas[d] = daily_deltas.get(d, 0) + delta
 
     # Generate data points by working backwards
