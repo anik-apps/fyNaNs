@@ -1,7 +1,7 @@
 import json
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -180,12 +180,14 @@ async def sync_all_items(
 @router.delete("/items/{item_id}")
 async def delete_plaid_item(
     item_id: uuid.UUID,
+    delete_accounts: bool = Query(False, description="Also delete all accounts and transactions"),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Revoke Plaid access token and remove PlaidItem.
 
-    Associated accounts are converted to manual (preserving transaction history).
+    By default, associated accounts are converted to manual (preserving transaction history).
+    Set delete_accounts=true to also delete all accounts and their transactions.
     """
     result = await db.execute(
         select(PlaidItem).where(PlaidItem.id == item_id, PlaidItem.user_id == user.id)
@@ -206,16 +208,25 @@ async def delete_plaid_item(
     except Exception:
         pass  # Log but proceed -- orphaned tokens expire naturally
 
-    # Convert associated accounts to manual
     accounts_result = await db.execute(
         select(Account).where(Account.plaid_item_id == plaid_item.id)
     )
-    for account in accounts_result.scalars().all():
-        account.is_manual = True
-        account.plaid_item_id = None
-        account.plaid_account_id = None
+    accounts = accounts_result.scalars().all()
+    num_accounts = len(accounts)
+
+    if delete_accounts:
+        # Delete accounts and their transactions (cascade)
+        for account in accounts:
+            await db.delete(account)
+    else:
+        # Convert accounts to manual (preserve transaction history)
+        for account in accounts:
+            account.is_manual = True
+            account.plaid_item_id = None
+            account.plaid_account_id = None
 
     await db.delete(plaid_item)
     await db.commit()
 
-    return {"detail": "Plaid item removed, accounts converted to manual"}
+    action = "deleted" if delete_accounts else "converted to manual"
+    return {"detail": f"Bank unlinked, {num_accounts} accounts {action}"}

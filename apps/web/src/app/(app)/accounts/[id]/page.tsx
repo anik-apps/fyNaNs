@@ -92,13 +92,19 @@ export default function AccountDetailPage() {
     }
   }, [account, accountId, router]);
 
-  const handleUnlinkBank = useCallback(async () => {
+  const handleUnlinkBank = useCallback(async (deleteAccounts: boolean) => {
     if (!account?.plaid_item_id) return;
-    if (!confirm(`Unlink ${account.institution_name}? All accounts from this bank will be converted to manual accounts. Transaction history will be kept.`)) return;
+
+    const msg = deleteAccounts
+      ? `Unlink ${account.institution_name} and DELETE all accounts + transactions from this bank? This cannot be undone.`
+      : `Unlink ${account.institution_name}? Accounts will be kept as manual accounts. Transaction history will be preserved.`;
+
+    if (!confirm(msg)) return;
 
     setIsDeleting(true);
     try {
-      await apiFetch(`/api/plaid/items/${account.plaid_item_id}`, { method: "DELETE" });
+      const params = deleteAccounts ? "?delete_accounts=true" : "";
+      await apiFetch(`/api/plaid/items/${account.plaid_item_id}${params}`, { method: "DELETE" });
       router.push("/accounts");
     } catch {
       setIsDeleting(false);
@@ -129,14 +135,25 @@ export default function AccountDetailPage() {
         <h1 className="text-2xl font-bold">{account.name}</h1>
         <div className="flex gap-2">
           {!account.is_manual && account.plaid_item_id && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleUnlinkBank}
-              disabled={isDeleting}
-            >
-              Unlink Bank
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleUnlinkBank(false)}
+                disabled={isDeleting}
+              >
+                Unlink (Keep Data)
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleUnlinkBank(true)}
+                disabled={isDeleting}
+                className="text-destructive hover:text-destructive"
+              >
+                Unlink & Delete
+              </Button>
+            </>
           )}
           <Button
             variant="destructive"
