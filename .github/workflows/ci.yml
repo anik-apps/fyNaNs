@@ -187,7 +187,6 @@ jobs:
 
       - name: Run Playwright E2E tests
         working-directory: apps/web
-        continue-on-error: true
         run: pnpm exec playwright test e2e/real-auth-flow.spec.ts e2e/page-loading.spec.ts --reporter=list
         env:
           NEXT_PUBLIC_API_URL: http://localhost:8888
