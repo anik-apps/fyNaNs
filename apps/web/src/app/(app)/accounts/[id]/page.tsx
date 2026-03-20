@@ -219,81 +219,76 @@ export default function AccountDetailPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <p className={cn("text-3xl font-bold", isLiability && "text-red-600 dark:text-red-400")}>
-            {formatCurrency(account.balance, account.currency)}
-          </p>
-          {account.last_synced && (
-            <p className="text-xs text-muted-foreground mt-1">
-              Last synced: {formatRelativeDate(account.last_synced)}
-            </p>
-          )}
-        </CardContent>
-      </Card>
+          <div className="flex items-start justify-between gap-6">
+            {/* Left: Balance + sync info */}
+            <div>
+              <p className={cn("text-3xl font-bold", isLiability && "text-red-600 dark:text-red-400")}>
+                {formatCurrency(account.balance, account.currency)}
+              </p>
+              {account.last_synced && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Last synced: {formatRelativeDate(account.last_synced)}
+                </p>
+              )}
+            </div>
 
-      {categoryBreakdown.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Spending by Category
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-4">
-              <div className="w-40 h-40 flex-shrink-0">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={categoryBreakdown}
-                      dataKey="total"
-                      nameKey="name"
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={35}
-                      outerRadius={65}
-                      paddingAngle={2}
-                      strokeWidth={0}
-                    >
-                      {categoryBreakdown.map((entry, i) => (
-                        <Cell key={i} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      formatter={(value: number) => formatCurrency(value)}
-                      contentStyle={{
-                        fontSize: "12px",
-                        borderRadius: "6px",
-                        border: "1px solid var(--border)",
-                        background: "var(--popover)",
-                      }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="flex-1 space-y-1.5 overflow-hidden">
-                {categoryBreakdown.slice(0, 8).map((cat) => (
-                  <div key={cat.name} className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2 min-w-0">
+            {/* Right: Pie chart + legend */}
+            {categoryBreakdown.length > 0 && (
+              <div className="flex items-center gap-3">
+                <div className="w-28 h-28 flex-shrink-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={categoryBreakdown}
+                        dataKey="total"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={25}
+                        outerRadius={50}
+                        paddingAngle={2}
+                        strokeWidth={0}
+                      >
+                        {categoryBreakdown.map((entry, i) => (
+                          <Cell key={i} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(value: number) => formatCurrency(value)}
+                        contentStyle={{
+                          fontSize: "12px",
+                          borderRadius: "6px",
+                          border: "1px solid var(--border)",
+                          background: "var(--popover)",
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="space-y-1 overflow-hidden">
+                  {categoryBreakdown.slice(0, 5).map((cat) => (
+                    <div key={cat.name} className="flex items-center gap-1.5 text-xs">
                       <span
-                        className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                        className="w-2 h-2 rounded-full flex-shrink-0"
                         style={{ backgroundColor: cat.color }}
                       />
-                      <span className="truncate">{cat.name}</span>
+                      <span className="truncate max-w-[80px]">{cat.name}</span>
+                      <span className="font-medium whitespace-nowrap">
+                        {formatCurrency(cat.total)}
+                      </span>
                     </div>
-                    <span className="font-medium ml-2 whitespace-nowrap">
-                      {formatCurrency(cat.total)}
-                    </span>
-                  </div>
-                ))}
-                {categoryBreakdown.length > 8 && (
-                  <p className="text-xs text-muted-foreground">
-                    +{categoryBreakdown.length - 8} more
-                  </p>
-                )}
+                  ))}
+                  {categoryBreakdown.length > 5 && (
+                    <p className="text-[10px] text-muted-foreground">
+                      +{categoryBreakdown.length - 5} more
+                    </p>
+                  )}
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
