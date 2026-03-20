@@ -58,6 +58,7 @@ interface DashboardData {
     category_name: string;
     category_color: string;
     account_name: string;
+    account_type: string;
     is_pending: boolean;
   }>;
 }
@@ -101,7 +102,7 @@ export default function DashboardPage() {
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">Dashboard</h1>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <NetWorthCard
           totalAssets={data.net_worth.total_assets}
           totalLiabilities={data.net_worth.total_liabilities}
@@ -113,8 +114,9 @@ export default function DashboardPage() {
           difference={data.spending_comparison.difference}
           percentChange={data.spending_comparison.percent_change}
         />
-        <AccountsSummary accountsByType={data.accounts_by_type} />
       </div>
+
+      <AccountsSummary accountsByType={data.accounts_by_type} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <BudgetBars budgets={data.top_budgets} />

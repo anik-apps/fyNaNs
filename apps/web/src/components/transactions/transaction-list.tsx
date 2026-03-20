@@ -25,6 +25,7 @@ interface TransactionListProps {
   search: string;
   category: string;
   accountId: string;
+  dateFrom?: string;
 }
 
 function formatDateGroupHeader(dateStr: string): string {
@@ -61,6 +62,7 @@ export function TransactionList({
   search,
   category,
   accountId,
+  dateFrom,
 }: TransactionListProps) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -77,6 +79,7 @@ export function TransactionList({
       if (category && category !== "all") params.set("category_id", category);
       if (accountId && accountId !== "all")
         params.set("account_id", accountId);
+      if (dateFrom) params.set("date_from", dateFrom);
       if (nextCursor) params.set("cursor", nextCursor);
 
       const data = await apiFetch<{
@@ -86,7 +89,7 @@ export function TransactionList({
 
       return data;
     },
-    [search, category, accountId]
+    [search, category, accountId, dateFrom]
   );
 
   useEffect(() => {
