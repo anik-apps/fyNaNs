@@ -14,6 +14,11 @@ async function loginViaForm(page: any, email: string, password: string) {
   await page.waitForURL(/\/dashboard/, { timeout: 15000 });
 }
 
+async function navigateAuthenticated(page: any, path: string) {
+  await page.goto(path);
+  await page.waitForLoadState("networkidle");
+}
+
 test.describe("All pages load without errors", () => {
   let email: string;
   const password = "PageTest123!";
@@ -49,8 +54,7 @@ test.describe("All pages load without errors", () => {
   test("accounts page loads without errors", async ({ page }) => {
     const errors = setupErrorCollection(page);
     await loginViaForm(page, email, password);
-    await page.goto("/accounts");
-    await page.waitForLoadState("networkidle");
+    await navigateAuthenticated(page, "/accounts");
     await expect(page).toHaveURL(/\/accounts/);
     expect(errors).toEqual([]);
   });
@@ -58,8 +62,7 @@ test.describe("All pages load without errors", () => {
   test("transactions page loads without errors", async ({ page }) => {
     const errors = setupErrorCollection(page);
     await loginViaForm(page, email, password);
-    await page.goto("/transactions");
-    await page.waitForLoadState("networkidle");
+    await navigateAuthenticated(page, "/transactions");
     await expect(page).toHaveURL(/\/transactions/);
     expect(errors).toEqual([]);
   });
@@ -67,8 +70,7 @@ test.describe("All pages load without errors", () => {
   test("budgets page loads without errors", async ({ page }) => {
     const errors = setupErrorCollection(page);
     await loginViaForm(page, email, password);
-    await page.goto("/budgets");
-    await page.waitForLoadState("networkidle");
+    await navigateAuthenticated(page, "/budgets");
     await expect(page).toHaveURL(/\/budgets/);
     expect(errors).toEqual([]);
   });
@@ -76,8 +78,7 @@ test.describe("All pages load without errors", () => {
   test("bills page loads without errors", async ({ page }) => {
     const errors = setupErrorCollection(page);
     await loginViaForm(page, email, password);
-    await page.goto("/bills");
-    await page.waitForLoadState("networkidle");
+    await navigateAuthenticated(page, "/bills");
     await expect(page).toHaveURL(/\/bills/);
     expect(errors).toEqual([]);
   });
@@ -85,8 +86,7 @@ test.describe("All pages load without errors", () => {
   test("settings page loads without errors", async ({ page }) => {
     const errors = setupErrorCollection(page);
     await loginViaForm(page, email, password);
-    await page.goto("/settings");
-    await page.waitForLoadState("networkidle");
+    await navigateAuthenticated(page, "/settings");
     await expect(page).toHaveURL(/\/settings/);
     expect(errors).toEqual([]);
   });
@@ -94,8 +94,7 @@ test.describe("All pages load without errors", () => {
   test("settings/profile loads without errors", async ({ page }) => {
     const errors = setupErrorCollection(page);
     await loginViaForm(page, email, password);
-    await page.goto("/settings/profile");
-    await page.waitForLoadState("networkidle");
+    await navigateAuthenticated(page, "/settings/profile");
     await expect(page).toHaveURL(/\/settings\/profile/);
     expect(errors).toEqual([]);
   });
@@ -103,8 +102,7 @@ test.describe("All pages load without errors", () => {
   test("settings/security loads without errors", async ({ page }) => {
     const errors = setupErrorCollection(page);
     await loginViaForm(page, email, password);
-    await page.goto("/settings/security");
-    await page.waitForLoadState("networkidle");
+    await navigateAuthenticated(page, "/settings/security");
     await expect(page).toHaveURL(/\/settings\/security/);
     expect(errors).toEqual([]);
   });
@@ -112,8 +110,7 @@ test.describe("All pages load without errors", () => {
   test("settings/notifications loads without errors", async ({ page }) => {
     const errors = setupErrorCollection(page);
     await loginViaForm(page, email, password);
-    await page.goto("/settings/notifications");
-    await page.waitForLoadState("networkidle");
+    await navigateAuthenticated(page, "/settings/notifications");
     await expect(page).toHaveURL(/\/settings\/notifications/);
     expect(errors).toEqual([]);
   });
@@ -121,8 +118,7 @@ test.describe("All pages load without errors", () => {
   test("notifications page loads without errors", async ({ page }) => {
     const errors = setupErrorCollection(page);
     await loginViaForm(page, email, password);
-    await page.goto("/notifications");
-    await page.waitForLoadState("networkidle");
+    await navigateAuthenticated(page, "/notifications");
     await expect(page).toHaveURL(/\/notifications/);
     expect(errors).toEqual([]);
   });
