@@ -19,13 +19,15 @@ interface Transaction {
   merchant_name: string | null;
   amount: string | number;
   category_name: string;
-  account_type?: string;
 }
 
+/**
+ * Unified Plaid sign convention: positive = expense, negative = income.
+ * Category overrides take precedence over sign.
+ */
 function getDisplayType(
   amount: number,
   categoryName: string,
-  accountType: string
 ): "income" | "expense" | "transfer" {
   if (TRANSFER_CATEGORIES.has(categoryName)) return "transfer";
   if (INCOME_CATEGORIES.has(categoryName)) return "income";
@@ -52,11 +54,7 @@ export function RecentTransactions({
         const numAmount =
           typeof tx.amount === "string" ? parseFloat(tx.amount) : tx.amount;
         const absAmount = Math.abs(numAmount);
-        const displayType = getDisplayType(
-          numAmount,
-          tx.category_name,
-          tx.account_type || "checking"
-        );
+        const displayType = getDisplayType(numAmount, tx.category_name);
         const amountColor =
           displayType === "income"
             ? theme.colors.success

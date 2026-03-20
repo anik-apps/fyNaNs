@@ -53,7 +53,6 @@ export function TransactionList({
           category_name={item.category_name}
           category_color={item.category_color}
           account_name={item.account_name}
-          account_type={item.account_type}
           is_pending={item.is_pending}
         />
       )}

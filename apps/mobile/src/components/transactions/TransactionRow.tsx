@@ -11,7 +11,6 @@ const INCOME_CATEGORIES = new Set([
   "Investments",
 ]);
 const TRANSFER_CATEGORIES = new Set(["Transfer"]);
-const LIABILITY_ACCOUNT_TYPES = new Set(["credit", "loan"]);
 
 interface TransactionRowProps {
   id: string;
@@ -26,18 +25,24 @@ interface TransactionRowProps {
   is_pending: boolean;
 }
 
+/**
+ * Determine how to display a transaction amount.
+ *
+ * Plaid uses a unified sign convention for ALL account types:
+ *   - Positive = money out (expense)
+ *   - Negative = money in (income)
+ *
+ * Category overrides take precedence:
+ *   - Income categories always show as income
+ *   - Transfer categories always show as neutral
+ *   - Otherwise, fall back to the sign of the amount
+ */
 function getDisplayType(
   amount: number,
   categoryName: string,
-  accountType: string
 ): "income" | "expense" | "transfer" {
   if (TRANSFER_CATEGORIES.has(categoryName)) return "transfer";
   if (INCOME_CATEGORIES.has(categoryName)) return "income";
-
-  if (LIABILITY_ACCOUNT_TYPES.has(accountType)) {
-    return amount < 0 ? "income" : "expense";
-  }
-
   return amount < 0 ? "income" : "expense";
 }
 
@@ -48,14 +53,13 @@ export function TransactionRow({
   amount,
   category_name,
   account_name,
-  account_type = "checking",
   is_pending,
 }: TransactionRowProps) {
   const { theme } = useTheme();
   const numAmount =
     typeof amount === "string" ? parseFloat(amount) : amount;
   const absAmount = Math.abs(numAmount);
-  const displayType = getDisplayType(numAmount, category_name, account_type);
+  const displayType = getDisplayType(numAmount, category_name);
 
   const amountColor =
     displayType === "income"
