@@ -35,7 +35,7 @@ class PlaidServiceError(Exception):
 def _get_plaid_client() -> plaid_api.PlaidApi:
     env_map = {
         "sandbox": plaid.Environment.Sandbox,
-        "development": plaid.Environment.Sandbox,  # Plaid SDK only has Sandbox + Production
+        "development": plaid.Environment.Sandbox,  # Our plaid-python SDK version only exposes Sandbox + Production
         "production": plaid.Environment.Production,
     }
     configuration = plaid.Configuration(
