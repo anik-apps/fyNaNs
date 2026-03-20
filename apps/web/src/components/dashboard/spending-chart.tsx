@@ -4,7 +4,9 @@ import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { formatCurrency, cn } from "@/lib/utils";
+import { Expand } from "lucide-react";
 import { apiFetch } from "@/lib/api-client";
+import { ChartModal } from "./chart-modal";
 import {
   ResponsiveContainer,
   BarChart,
@@ -13,6 +15,7 @@ import {
   YAxis,
   Tooltip,
   Legend,
+  CartesianGrid,
 } from "recharts";
 
 interface SpendingChartProps {
@@ -29,9 +32,9 @@ interface SpendingPoint {
 }
 
 const VIEWS = [
-  { value: "monthly", label: "Monthly", months: 6 },
-  { value: "monthly-12", label: "12M", months: 12 },
-  { value: "yearly", label: "Yearly", months: 60 },
+  { value: "monthly", label: "6M" },
+  { value: "monthly-12", label: "12M" },
+  { value: "yearly", label: "Yearly" },
 ];
 
 function CustomTooltip({ active, payload, label }: any) {
@@ -50,6 +53,45 @@ function CustomTooltip({ active, payload, label }: any) {
   return null;
 }
 
+function SpendingBarChart({
+  data,
+  height,
+  showGrid = false,
+}: {
+  data: SpendingPoint[];
+  height: string | number;
+  showGrid?: boolean;
+}) {
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <BarChart data={data} barGap={2}>
+        {showGrid && (
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.5} />
+        )}
+        <XAxis
+          dataKey="label"
+          tick={{ fontSize: showGrid ? 12 : 10, fill: "var(--muted-foreground)" }}
+          axisLine={false}
+          tickLine={false}
+        />
+        <YAxis
+          hide={!showGrid}
+          tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
+          tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+          axisLine={false}
+          tickLine={false}
+          width={55}
+          domain={[0, "auto"]}
+        />
+        <Tooltip content={<CustomTooltip />} />
+        <Legend iconSize={8} wrapperStyle={{ fontSize: showGrid ? "12px" : "10px" }} />
+        <Bar dataKey="spending" name="Spending" fill="#ef4444" radius={[3, 3, 0, 0]} maxBarSize={showGrid ? 48 : 32} />
+        <Bar dataKey="income" name="Income" fill="#22c55e" radius={[3, 3, 0, 0]} maxBarSize={showGrid ? 48 : 32} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
 export function SpendingChart({
   currentMonth,
   previousMonth,
@@ -62,6 +104,7 @@ export function SpendingChart({
   const [view, setView] = useState("monthly");
   const [chartData, setChartData] = useState<SpendingPoint[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
 
   const fetchHistory = useCallback(async (v: string) => {
     setIsLoading(true);
@@ -83,87 +126,92 @@ export function SpendingChart({
     fetchHistory(view);
   }, [view, fetchHistory]);
 
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Spending & Income
-          </CardTitle>
-          <div className="flex gap-0.5">
-            {VIEWS.map((v) => (
-              <Button
-                key={v.value}
-                variant={view === v.value ? "default" : "ghost"}
-                size="sm"
-                className="h-6 px-2 text-[10px]"
-                onClick={() => setView(v.value)}
-              >
-                {v.label}
-              </Button>
-            ))}
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {/* Current month summary */}
-        <div>
-          <p className="text-2xl font-bold">{formatCurrency(currentMonth)}</p>
-          <div className="flex items-center gap-1 text-sm">
-            <span className={cn(isUp ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400")}>
-              {isUp ? "+" : ""}
-              {percentChange !== null ? `${percentChange}%` : "N/A"}
-            </span>
-            <span className="text-muted-foreground">
-              vs last month ({formatCurrency(previousMonth)})
-            </span>
-          </div>
-        </div>
+  const viewButtons = (
+    <div className="flex gap-0.5">
+      {VIEWS.map((v) => (
+        <Button
+          key={v.value}
+          variant={view === v.value ? "default" : "ghost"}
+          size="sm"
+          className="h-6 px-2 text-[10px]"
+          onClick={() => setView(v.value)}
+        >
+          {v.label}
+        </Button>
+      ))}
+    </div>
+  );
 
-        {/* Bar Chart */}
-        {chartData.length > 0 && !isLoading && (
-          <div className="h-40 -mx-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} barGap={2}>
-                <XAxis
-                  dataKey="label"
-                  tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  hide
-                  domain={[0, "auto"]}
-                />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend
-                  iconSize={8}
-                  wrapperStyle={{ fontSize: "10px" }}
-                />
-                <Bar
-                  dataKey="spending"
-                  name="Spending"
-                  fill="#ef4444"
-                  radius={[3, 3, 0, 0]}
-                  maxBarSize={32}
-                />
-                <Bar
-                  dataKey="income"
-                  name="Income"
-                  fill="#22c55e"
-                  radius={[3, 3, 0, 0]}
-                  maxBarSize={32}
-                />
-              </BarChart>
-            </ResponsiveContainer>
+  return (
+    <>
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Spending & Income
+            </CardTitle>
+            {viewButtons}
           </div>
-        )}
-        {isLoading && (
-          <div className="h-40 flex items-center justify-center text-xs text-muted-foreground">
-            Loading chart...
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div>
+            <p className="text-2xl font-bold">{formatCurrency(currentMonth)}</p>
+            <div className="flex items-center gap-1 text-sm">
+              <span className={cn(isUp ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400")}>
+                {isUp ? "+" : ""}
+                {percentChange !== null ? `${percentChange}%` : "N/A"}
+              </span>
+              <span className="text-muted-foreground">
+                vs last month ({formatCurrency(previousMonth)})
+              </span>
+            </div>
           </div>
-        )}
-      </CardContent>
-    </Card>
+
+          {chartData.length > 0 && !isLoading && (
+            <div
+              className="h-40 -mx-2 cursor-pointer relative group"
+              onClick={() => setModalOpen(true)}
+            >
+              <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                <div className="bg-background/80 rounded p-1">
+                  <Expand className="w-3.5 h-3.5 text-muted-foreground" />
+                </div>
+              </div>
+              <SpendingBarChart data={chartData} height="100%" />
+            </div>
+          )}
+          {isLoading && (
+            <div className="h-40 flex items-center justify-center text-xs text-muted-foreground">
+              Loading chart...
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <ChartModal
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        title="Spending & Income History"
+      >
+        <div className="flex flex-col h-full gap-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-2xl font-bold">{formatCurrency(currentMonth)}</span>
+              <span className="text-sm text-muted-foreground ml-2">this month</span>
+            </div>
+            {viewButtons}
+          </div>
+          <div className="flex-1 min-h-0">
+            {chartData.length > 0 ? (
+              <SpendingBarChart data={chartData} height="100%" showGrid />
+            ) : (
+              <div className="h-full flex items-center justify-center text-muted-foreground">
+                No data for this period
+              </div>
+            )}
+          </div>
+        </div>
+      </ChartModal>
+    </>
   );
 }

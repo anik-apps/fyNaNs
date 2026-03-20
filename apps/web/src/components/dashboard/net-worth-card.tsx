@@ -4,8 +4,9 @@ import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { formatCurrency, cn } from "@/lib/utils";
-import { TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { Expand, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { apiFetch } from "@/lib/api-client";
+import { ChartModal } from "./chart-modal";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -13,6 +14,7 @@ import {
   XAxis,
   YAxis,
   Tooltip,
+  CartesianGrid,
 } from "recharts";
 
 interface NetWorthCardProps {
@@ -48,12 +50,75 @@ function CustomTooltip({ active, payload }: any) {
     const point = payload[0].payload;
     return (
       <div className="bg-popover border rounded-md px-3 py-2 shadow-md text-sm">
-        <p className="text-muted-foreground">{new Date(point.date).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</p>
+        <p className="text-muted-foreground">
+          {new Date(point.date).toLocaleDateString("en-US", {
+            month: "long", day: "numeric", year: "numeric",
+          })}
+        </p>
         <p className="font-semibold">{formatCurrency(point.net_worth)}</p>
       </div>
     );
   }
   return null;
+}
+
+function NWChart({
+  data,
+  period,
+  height,
+  showGrid = false,
+}: {
+  data: NetWorthPoint[];
+  period: string;
+  height: string | number;
+  showGrid?: boolean;
+}) {
+  const firstVal = data[0]?.net_worth ?? 0;
+  const lastVal = data[data.length - 1]?.net_worth ?? 0;
+  const isUp = lastVal >= firstVal;
+  const chartColor = isUp ? "#16a34a" : "#dc2626";
+
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <AreaChart data={data}>
+        <defs>
+          <linearGradient id="nwGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor={chartColor} stopOpacity={0.2} />
+            <stop offset="95%" stopColor={chartColor} stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        {showGrid && (
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.5} />
+        )}
+        <XAxis
+          dataKey="date"
+          tickFormatter={(d) => formatDateLabel(d, period)}
+          tick={{ fontSize: showGrid ? 12 : 10, fill: "var(--muted-foreground)" }}
+          axisLine={false}
+          tickLine={false}
+          interval="preserveStartEnd"
+          minTickGap={showGrid ? 60 : 40}
+        />
+        <YAxis
+          hide={!showGrid}
+          tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
+          tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+          axisLine={false}
+          tickLine={false}
+          width={55}
+          domain={["dataMin - 1000", "dataMax + 1000"]}
+        />
+        <Tooltip content={<CustomTooltip />} />
+        <Area
+          type="monotone"
+          dataKey="net_worth"
+          stroke={chartColor}
+          strokeWidth={2}
+          fill="url(#nwGradient)"
+        />
+      </AreaChart>
+    </ResponsiveContainer>
+  );
 }
 
 export function NetWorthCard({
@@ -68,6 +133,7 @@ export function NetWorthCard({
   const [period, setPeriod] = useState("1m");
   const [chartData, setChartData] = useState<NetWorthPoint[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
 
   const fetchHistory = useCallback(async (p: string) => {
     setIsLoading(true);
@@ -87,107 +153,116 @@ export function NetWorthCard({
     fetchHistory(period);
   }, [period, fetchHistory]);
 
-  // Determine chart color based on trend
-  const firstVal = chartData[0]?.net_worth ?? 0;
-  const lastVal = chartData[chartData.length - 1]?.net_worth ?? 0;
-  const isUp = lastVal >= firstVal;
-  const chartColor = isUp ? "#16a34a" : "#dc2626";
+  const periodButtons = (
+    <div className="flex gap-0.5">
+      {PERIODS.map((p) => (
+        <Button
+          key={p.value}
+          variant={period === p.value ? "default" : "ghost"}
+          size="sm"
+          className="h-6 px-2 text-[10px]"
+          onClick={() => setPeriod(p.value)}
+        >
+          {p.label}
+        </Button>
+      ))}
+    </div>
+  );
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Net Worth
-          </CardTitle>
-          <div className="flex gap-0.5">
-            {PERIODS.map((p) => (
-              <Button
-                key={p.value}
-                variant={period === p.value ? "default" : "ghost"}
-                size="sm"
-                className="h-6 px-2 text-[10px]"
-                onClick={() => setPeriod(p.value)}
-              >
-                {p.label}
-              </Button>
-            ))}
+    <>
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Net Worth
+            </CardTitle>
+            {periodButtons}
           </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="flex items-center gap-2">
-          <span
-            className={cn(
-              "text-3xl font-bold",
-              isPositive ? "text-green-600 dark:text-green-400" : isZero ? "" : "text-red-600 dark:text-red-400"
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center gap-2">
+            <span
+              className={cn(
+                "text-3xl font-bold",
+                isPositive ? "text-green-600 dark:text-green-400" : isZero ? "" : "text-red-600 dark:text-red-400"
+              )}
+            >
+              {formatCurrency(netWorth)}
+            </span>
+            {isPositive ? (
+              <TrendingUp className="h-5 w-5 text-green-600 dark:text-green-400" />
+            ) : isZero ? (
+              <Minus className="h-5 w-5 text-muted-foreground" />
+            ) : (
+              <TrendingDown className="h-5 w-5 text-red-600 dark:text-red-400" />
             )}
-          >
-            {formatCurrency(netWorth)}
-          </span>
-          {isPositive ? (
-            <TrendingUp className="h-5 w-5 text-green-600 dark:text-green-400" />
-          ) : isZero ? (
-            <Minus className="h-5 w-5 text-muted-foreground" />
-          ) : (
-            <TrendingDown className="h-5 w-5 text-red-600 dark:text-red-400" />
+          </div>
+
+          {chartData.length > 1 && !isLoading && (
+            <div
+              className="h-32 -mx-2 cursor-pointer relative group"
+              onClick={() => setModalOpen(true)}
+            >
+              <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                <div className="bg-background/80 rounded p-1">
+                  <Expand className="w-3.5 h-3.5 text-muted-foreground" />
+                </div>
+              </div>
+              <NWChart data={chartData} period={period} height="100%" />
+            </div>
           )}
-        </div>
+          {isLoading && (
+            <div className="h-32 flex items-center justify-center text-xs text-muted-foreground">
+              Loading chart...
+            </div>
+          )}
 
-        {/* Chart */}
-        {chartData.length > 1 && !isLoading && (
-          <div className="h-32 -mx-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData}>
-                <defs>
-                  <linearGradient id="nwGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={chartColor} stopOpacity={0.2} />
-                    <stop offset="95%" stopColor={chartColor} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <XAxis
-                  dataKey="date"
-                  tickFormatter={(d) => formatDateLabel(d, period)}
-                  tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
-                  axisLine={false}
-                  tickLine={false}
-                  interval="preserveStartEnd"
-                  minTickGap={40}
-                />
-                <YAxis hide domain={["dataMin - 1000", "dataMax + 1000"]} />
-                <Tooltip content={<CustomTooltip />} />
-                <Area
-                  type="monotone"
-                  dataKey="net_worth"
-                  stroke={chartColor}
-                  strokeWidth={2}
-                  fill="url(#nwGradient)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+          <div className="flex gap-6 text-sm">
+            <div>
+              <span className="text-muted-foreground">Assets</span>
+              <p className="font-medium text-green-600 dark:text-green-400">
+                {formatCurrency(totalAssets)}
+              </p>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Liabilities</span>
+              <p className="font-medium text-red-600 dark:text-red-400">
+                {formatCurrency(totalLiabilities)}
+              </p>
+            </div>
           </div>
-        )}
-        {isLoading && (
-          <div className="h-32 flex items-center justify-center text-xs text-muted-foreground">
-            Loading chart...
-          </div>
-        )}
+        </CardContent>
+      </Card>
 
-        <div className="flex gap-6 text-sm">
-          <div>
-            <span className="text-muted-foreground">Assets</span>
-            <p className="font-medium text-green-600 dark:text-green-400">
-              {formatCurrency(totalAssets)}
-            </p>
+      <ChartModal
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        title="Net Worth History"
+      >
+        <div className="flex flex-col h-full gap-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className={cn(
+                "text-2xl font-bold",
+                isPositive ? "text-green-600 dark:text-green-400" : isZero ? "" : "text-red-600 dark:text-red-400"
+              )}>
+                {formatCurrency(netWorth)}
+              </span>
+            </div>
+            {periodButtons}
           </div>
-          <div>
-            <span className="text-muted-foreground">Liabilities</span>
-            <p className="font-medium text-red-600 dark:text-red-400">
-              {formatCurrency(totalLiabilities)}
-            </p>
+          <div className="flex-1 min-h-0">
+            {chartData.length > 1 ? (
+              <NWChart data={chartData} period={period} height="100%" showGrid />
+            ) : (
+              <div className="h-full flex items-center justify-center text-muted-foreground">
+                No data for this period
+              </div>
+            )}
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </ChartModal>
+    </>
   );
 }
