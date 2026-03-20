@@ -6,8 +6,9 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   useWindowDimensions,
+  GestureResponderEvent,
 } from "react-native";
-import Svg, { Path, Text as SvgText } from "react-native-svg";
+import Svg, { Path, Circle, Line, Text as SvgText } from "react-native-svg";
 import { formatCurrency } from "@/src/lib/utils";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import type { Theme } from "@/src/lib/theme";
@@ -50,12 +51,13 @@ function NetWorthChart({
   theme: Theme;
 }) {
   const { width: screenWidth } = useWindowDimensions();
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
 
   if (data.length < 2) return null;
 
-  const chartWidth = screenWidth - 64; // card padding + margins
-  const chartHeight = 120;
-  const paddingTop = 8;
+  const chartWidth = screenWidth - 64;
+  const chartHeight = 200;
+  const paddingTop = 24; // room for tooltip
   const paddingBottom = 20;
   const graphHeight = chartHeight - paddingTop - paddingBottom;
 
@@ -84,18 +86,107 @@ function NetWorthChart({
     ` L ${points[points.length - 1].x} ${paddingTop + graphHeight}` +
     ` L ${points[0].x} ${paddingTop + graphHeight} Z`;
 
-  // Pick ~4 evenly spaced labels
   const labelCount = Math.min(4, data.length);
   const labelIndices: number[] = [];
   for (let i = 0; i < labelCount; i++) {
     labelIndices.push(Math.round((i / (labelCount - 1)) * (data.length - 1)));
   }
 
+  // Clear selection when data changes (period switch)
+  useEffect(() => {
+    setSelectedIndex(null);
+  }, [data]);
+
+  const handleTouch = (e: GestureResponderEvent) => {
+    const touchX = e.nativeEvent.locationX;
+    // Find closest point
+    let closest = 0;
+    let minDist = Infinity;
+    for (let i = 0; i < points.length; i++) {
+      const dist = Math.abs(points[i].x - touchX);
+      if (dist < minDist) {
+        minDist = dist;
+        closest = i;
+      }
+    }
+    setSelectedIndex(closest);
+  };
+
+  const sel = selectedIndex !== null ? selectedIndex : null;
+
   return (
-    <View style={styles.chartContainer}>
+    <View
+      style={styles.chartContainer}
+      onStartShouldSetResponder={() => true}
+      onMoveShouldSetResponder={() => true}
+      onResponderGrant={handleTouch}
+      onResponderMove={handleTouch}
+      onResponderRelease={() => setTimeout(() => setSelectedIndex(null), 5000)}
+    >
       <Svg width={chartWidth} height={chartHeight}>
         <Path d={areaPath} fill={strokeColor} opacity={0.1} />
         <Path d={linePath} stroke={strokeColor} strokeWidth={2} fill="none" />
+        {/* Start value label */}
+        {sel === null && (
+          <>
+            <Circle
+              cx={points[0].x}
+              cy={points[0].y}
+              r={3}
+              fill={strokeColor}
+            />
+            <SvgText
+              x={points[0].x + 4}
+              y={points[0].y - 8}
+              fontSize={10}
+              fontWeight="600"
+              fill={theme.colors.textSecondary}
+              textAnchor="start"
+            >
+              {formatCurrency(firstVal)}
+            </SvgText>
+            {/* End value label */}
+            <Circle
+              cx={points[points.length - 1].x}
+              cy={points[points.length - 1].y}
+              r={3}
+              fill={strokeColor}
+            />
+            <SvgText
+              x={points[points.length - 1].x - 4}
+              y={points[points.length - 1].y - 8}
+              fontSize={10}
+              fontWeight="600"
+              fill={strokeColor}
+              textAnchor="end"
+            >
+              {formatCurrency(lastVal)}
+            </SvgText>
+          </>
+        )}
+        {sel !== null && (
+          <>
+            <Line
+              x1={points[sel].x} y1={paddingTop}
+              x2={points[sel].x} y2={paddingTop + graphHeight}
+              stroke={theme.colors.textSecondary} strokeWidth={1} strokeDasharray="3,3"
+            />
+            <Circle
+              cx={points[sel].x} cy={points[sel].y}
+              r={5} fill={strokeColor} stroke={theme.colors.card} strokeWidth={2}
+            />
+            <SvgText
+              x={Math.min(Math.max(points[sel].x, 50), chartWidth - 50)}
+              y={12}
+              fontSize={11}
+              fontWeight="bold"
+              fill={theme.colors.text}
+              textAnchor="middle"
+            >
+              {formatCurrency(data[sel].net_worth)}
+            </SvgText>
+          </>
+        )}
         {labelIndices.map((idx) => (
           <SvgText
             key={idx}
@@ -115,10 +206,6 @@ function NetWorthChart({
 
 export function NetWorthCard({ data }: { data: NetWorthData }) {
   const { theme } = useTheme();
-  const netWorth =
-    typeof data.net_worth === "string"
-      ? parseFloat(data.net_worth)
-      : data.net_worth;
 
   const [period, setPeriod] = useState("1m");
   const [chartData, setChartData] = useState<NetWorthPoint[]>([]);
@@ -147,11 +234,11 @@ export function NetWorthCard({ data }: { data: NetWorthData }) {
 
   return (
     <View
-      style={[styles.card, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
+      style={[styles.card, { backgroundColor: theme.colors.card }]}
     >
       <View style={styles.headerRow}>
         <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
-          Net Worth
+          Net Worth Trend
         </Text>
         <View style={styles.periodRow}>
           {PERIODS.map((p) => (
@@ -183,15 +270,6 @@ export function NetWorthCard({ data }: { data: NetWorthData }) {
         </View>
       </View>
 
-      <Text
-        style={[
-          styles.amount,
-          { color: netWorth >= 0 ? theme.colors.success : theme.colors.error },
-        ]}
-      >
-        {formatCurrency(data.net_worth)}
-      </Text>
-
       {isLoading && (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="small" color={theme.colors.primary} />
@@ -207,36 +285,21 @@ export function NetWorthCard({ data }: { data: NetWorthData }) {
       {!isLoading && !chartError && chartData.length > 1 && (
         <NetWorthChart data={chartData} period={period} theme={theme} />
       )}
-
-      <View style={styles.row}>
-        <View style={styles.half}>
-          <Text style={[styles.subLabel, { color: theme.colors.textSecondary }]}>
-            Assets
-          </Text>
-          <Text style={[styles.subAmount, { color: theme.colors.success }]}>
-            {formatCurrency(data.total_assets)}
-          </Text>
-        </View>
-        <View style={styles.half}>
-          <Text style={[styles.subLabel, { color: theme.colors.textSecondary }]}>
-            Liabilities
-          </Text>
-          <Text style={[styles.subAmount, { color: theme.colors.error }]}>
-            {formatCurrency(data.total_liabilities)}
-          </Text>
-        </View>
-      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 12,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
     padding: 16,
     marginHorizontal: 16,
-    marginTop: 16,
-    borderWidth: 1,
+    marginTop: 12,
   },
   headerRow: {
     flexDirection: "row",
@@ -246,20 +309,15 @@ const styles = StyleSheet.create({
   label: { fontSize: 14 },
   periodRow: { flexDirection: "row", gap: 2 },
   periodButton: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 6,
   },
-  periodLabel: { fontSize: 11, fontWeight: "600" },
-  amount: { fontSize: 32, fontWeight: "bold", marginTop: 4 },
+  periodLabel: { fontSize: 13, fontWeight: "600" },
   chartContainer: { marginTop: 12, alignItems: "center" },
   loadingContainer: {
-    height: 120,
+    height: 180,
     justifyContent: "center",
     alignItems: "center",
   },
-  row: { flexDirection: "row", marginTop: 16, gap: 16 },
-  half: { flex: 1 },
-  subLabel: { fontSize: 12 },
-  subAmount: { fontSize: 16, fontWeight: "600", marginTop: 2 },
 });
