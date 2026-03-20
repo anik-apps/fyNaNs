@@ -285,16 +285,29 @@ async def _resolve_category_id(
     if plaid_category_detailed:
         detailed_key = plaid_category_detailed.upper()
         our_sub_name = _PLAID_DETAILED_MAP.get(detailed_key)
-        if our_sub_name:
-            result = await db.execute(
-                select(Category).where(
-                    Category.is_system.is_(True),
-                    Category.name == our_sub_name,
+        if our_sub_name and plaid_category_primary:
+            # Resolve parent category first to disambiguate subcategories
+            parent_name = _PLAID_PRIMARY_MAP.get(plaid_category_primary.upper())
+            if parent_name:
+                parent_result = await db.execute(
+                    select(Category).where(
+                        Category.is_system.is_(True),
+                        Category.name == parent_name,
+                        Category.parent_id.is_(None),
+                    )
                 )
-            )
-            cat = result.scalars().first()
-            if cat:
-                return cat.id
+                parent_cat = parent_result.scalars().first()
+                if parent_cat:
+                    result = await db.execute(
+                        select(Category).where(
+                            Category.is_system.is_(True),
+                            Category.name == our_sub_name,
+                            Category.parent_id == parent_cat.id,
+                        )
+                    )
+                    cat = result.scalars().first()
+                    if cat:
+                        return cat.id
 
     # 2. Try primary → parent category
     if plaid_category_primary:
@@ -388,7 +401,10 @@ async def sync_transactions(
 
             # Upsert: check if plaid_txn_id already exists
             existing = await db.execute(
-                select(Transaction).where(Transaction.plaid_txn_id == txn.transaction_id)
+                select(Transaction).where(
+                    Transaction.plaid_txn_id == txn.transaction_id,
+                    Transaction.user_id == plaid_item.user_id,
+                )
             )
             if existing.scalar_one_or_none():
                 continue  # Already exists, skip (will be handled by modified)
@@ -411,7 +427,10 @@ async def sync_transactions(
         # Process modified transactions
         for txn in response.modified:
             result = await db.execute(
-                select(Transaction).where(Transaction.plaid_txn_id == txn.transaction_id)
+                select(Transaction).where(
+                    Transaction.plaid_txn_id == txn.transaction_id,
+                    Transaction.user_id == plaid_item.user_id,
+                )
             )
             existing_txn = result.scalar_one_or_none()
             if existing_txn:
@@ -440,7 +459,8 @@ async def sync_transactions(
         for removed_txn in response.removed:
             result = await db.execute(
                 select(Transaction).where(
-                    Transaction.plaid_txn_id == removed_txn.transaction_id
+                    Transaction.plaid_txn_id == removed_txn.transaction_id,
+                    Transaction.user_id == plaid_item.user_id,
                 )
             )
             existing_txn = result.scalar_one_or_none()

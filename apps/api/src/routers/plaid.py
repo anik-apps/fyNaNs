@@ -1,3 +1,4 @@
+import asyncio
 import json
 import uuid
 
@@ -33,7 +34,10 @@ async def create_link(user: User = Depends(get_current_user)):
         result = await create_link_token(user.id)
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create link token: {e}") from e
+        import logging
+
+        logging.getLogger(__name__).error("Failed to create link token: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to create link token") from e
 
 
 @router.post("/exchange-token", response_model=ExchangeTokenResponse)
@@ -204,7 +208,7 @@ async def delete_plaid_item(
 
         access_token = await get_decrypted_access_token(plaid_item)
         client = _get_plaid_client()
-        client.item_remove(ItemRemoveRequest(access_token=access_token))
+        await asyncio.to_thread(client.item_remove, ItemRemoveRequest(access_token=access_token))
     except Exception:
         pass  # Log but proceed -- orphaned tokens expire naturally
 
