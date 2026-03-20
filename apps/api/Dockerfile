@@ -20,6 +20,11 @@ FROM python:3.12-slim AS runtime
 
 WORKDIR /app
 
+# Install runtime C libraries needed by cryptography/cffi
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libffi-dev libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy installed packages from builder
 COPY --from=builder /install /usr/local
 
