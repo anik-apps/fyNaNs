@@ -127,8 +127,8 @@ async def exchange_public_token(
 
     num_linked = 0
     for plaid_acct in accounts_response.accounts:
-        # Dedup: skip if this plaid_account_id already exists for this user
-        # (user may re-link the same bank — update balance instead of duplicating)
+        # Dedup: check by plaid_account_id first (same link session retry),
+        # then by name+mask (same real account across different link sessions)
         existing_result = await db.execute(
             select(Account).where(
                 Account.user_id == user_id,
@@ -136,9 +136,25 @@ async def exchange_public_token(
             )
         )
         existing_acct = existing_result.scalars().first()
+
+        if not existing_acct and plaid_acct.mask:
+            # Fallback: match by institution + name + last 4 digits
+            fallback_result = await db.execute(
+                select(Account).where(
+                    Account.user_id == user_id,
+                    Account.institution_name == institution_name,
+                    Account.name == plaid_acct.name,
+                    Account.mask == plaid_acct.mask,
+                )
+            )
+            existing_acct = fallback_result.scalars().first()
+
         if existing_acct:
+            # Update existing account with fresh data from Plaid
             existing_acct.balance = plaid_acct.balances.current or 0
             existing_acct.plaid_item_id = plaid_item.id
+            existing_acct.plaid_account_id = plaid_acct.account_id
+            existing_acct.is_manual = False
             continue
 
         # Map Plaid subtypes
