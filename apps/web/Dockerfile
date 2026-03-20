@@ -55,8 +55,8 @@ RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 
 # Copy built standalone output
 COPY --from=builder /app/apps/web/.next/standalone ./
-COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
-COPY --from=builder /app/apps/web/public ./apps/web/public
+COPY --from=builder /app/apps/web/.next/static ./.next/static
+COPY --from=builder /app/apps/web/public ./public
 # pnpm standalone doesn't bundle node_modules properly — copy from builder
 COPY --from=builder /app/node_modules ./node_modules
 
