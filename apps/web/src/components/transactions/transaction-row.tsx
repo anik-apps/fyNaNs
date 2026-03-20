@@ -87,6 +87,7 @@ export function TransactionRow({
 }: TransactionRowProps) {
   const numAmount = parseFloat(amount);
   const isExpense = numAmount > 0;
+  const isTransfer = category_name === "Transfer" || category_name === "Income";
   const CategoryIcon = CATEGORY_ICONS[category_name] || Package;
   const color = category_color || "#6b7280";
 
@@ -136,20 +137,24 @@ export function TransactionRow({
 
       {/* Amount */}
       <div className="text-right flex items-center gap-1.5">
-        {isExpense ? (
-          <ArrowUpRight className="w-3 h-3 text-red-500 dark:text-red-400" />
-        ) : (
-          <ArrowDownLeft className="w-3 h-3 text-green-500 dark:text-green-400" />
+        {!isTransfer && (
+          isExpense ? (
+            <ArrowUpRight className="w-3 h-3 text-red-500 dark:text-red-400" />
+          ) : (
+            <ArrowDownLeft className="w-3 h-3 text-green-500 dark:text-green-400" />
+          )
         )}
         <span
           className={cn(
             "text-sm font-semibold whitespace-nowrap",
-            isExpense
-              ? "text-red-600 dark:text-red-400"
-              : "text-green-600 dark:text-green-400"
+            isTransfer
+              ? "text-muted-foreground"
+              : isExpense
+                ? "text-red-600 dark:text-red-400"
+                : "text-green-600 dark:text-green-400"
           )}
         >
-          {isExpense ? "-" : "+"}
+          {!isTransfer && (isExpense ? "-" : "+")}
           {formatCurrency(Math.abs(numAmount))}
         </span>
       </div>
