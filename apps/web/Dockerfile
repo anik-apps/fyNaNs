@@ -35,6 +35,9 @@ COPY package.json pnpm-workspace.yaml ./
 RUN pnpm --filter @fynans/shared-types build || true
 RUN pnpm --filter @fynans/api-client build || true
 
+# Ensure public dir exists (may be empty)
+RUN mkdir -p apps/web/public
+
 # Build Next.js
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm --filter @fynans/web build
