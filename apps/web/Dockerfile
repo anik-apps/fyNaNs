@@ -6,8 +6,8 @@ WORKDIR /app
 # Install pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
-# Copy workspace root files
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+# Copy workspace root files + .npmrc for hoisted node_modules
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc* ./
 COPY apps/web/package.json ./apps/web/
 COPY packages/api-client/package.json ./packages/api-client/
 COPY packages/shared-types/package.json ./packages/shared-types/
@@ -35,6 +35,9 @@ COPY package.json pnpm-workspace.yaml ./
 RUN pnpm --filter @fynans/shared-types build || true
 RUN pnpm --filter @fynans/api-client build || true
 
+# Ensure public dir exists (may be empty)
+RUN mkdir -p apps/web/public
+
 # Build Next.js
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm --filter @fynans/web build
@@ -52,8 +55,10 @@ RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 
 # Copy built standalone output
 COPY --from=builder /app/apps/web/.next/standalone ./
-COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
-COPY --from=builder /app/apps/web/public ./apps/web/public
+COPY --from=builder /app/apps/web/.next/static ./.next/static
+COPY --from=builder /app/apps/web/public ./public
+# pnpm standalone doesn't bundle node_modules properly — copy from builder
+COPY --from=builder /app/node_modules ./node_modules
 
 USER nextjs
 
@@ -63,6 +68,6 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
+    CMD node -e "require('http').get('http://localhost:3000/', (r) => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
 
-CMD ["node", "apps/web/server.js"]
+CMD ["node", "server.js"]

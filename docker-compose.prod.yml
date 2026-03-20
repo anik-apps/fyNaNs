@@ -22,9 +22,7 @@ services:
           memory: 4G
 
   api:
-    build:
-      context: ./apps/api
-      dockerfile: Dockerfile
+    image: ${API_IMAGE:-ghcr.io/anik-apps/fynans-api:latest}
     restart: unless-stopped
     depends_on:
       db:
@@ -63,9 +61,7 @@ services:
           memory: 2G
 
   web:
-    build:
-      context: .
-      dockerfile: apps/web/Dockerfile
+    image: ${WEB_IMAGE:-ghcr.io/anik-apps/fynans-web:latest}
     restart: unless-stopped
     depends_on:
       api:
@@ -75,7 +71,7 @@ services:
       NEXT_PUBLIC_APP_URL: https://${DOMAIN}
       NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/', (r) => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3

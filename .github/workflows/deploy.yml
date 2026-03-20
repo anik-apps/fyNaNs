@@ -1,0 +1,122 @@
+name: Build & Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/fynans
+
+jobs:
+  build-deploy:
+    name: Build & Deploy
+    runs-on: [self-hosted, linux, arm64]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Build API image
+        run: |
+          docker build -t ${{ env.IMAGE_PREFIX }}-api:${{ github.sha }} \
+                        -t ${{ env.IMAGE_PREFIX }}-api:latest \
+                        -f apps/api/Dockerfile apps/api/
+
+      - name: Build Web image
+        run: |
+          docker build -t ${{ env.IMAGE_PREFIX }}-web:${{ github.sha }} \
+                        -t ${{ env.IMAGE_PREFIX }}-web:latest \
+                        -f apps/web/Dockerfile .
+
+      - name: Push images
+        run: |
+          docker push ${{ env.IMAGE_PREFIX }}-api:${{ github.sha }}
+          docker push ${{ env.IMAGE_PREFIX }}-api:latest
+          docker push ${{ env.IMAGE_PREFIX }}-web:${{ github.sha }}
+          docker push ${{ env.IMAGE_PREFIX }}-web:latest
+
+      - name: Generate .env.production
+        run: |
+          cat > /opt/fynans/.env.production << ENVEOF
+          POSTGRES_USER=fynans
+          POSTGRES_PASSWORD=${{ secrets.DB_PASSWORD }}
+          POSTGRES_DB=fynans
+          DATABASE_URL=postgresql+asyncpg://fynans:${{ secrets.DB_PASSWORD }}@db:5432/fynans
+          JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}
+          JWT_ALGORITHM=HS256
+          ACCESS_TOKEN_EXPIRE_MINUTES=15
+          REFRESH_TOKEN_EXPIRE_DAYS=30
+          ENCRYPTION_MASTER_SECRET=${{ secrets.ENCRYPTION_MASTER_SECRET }}
+          COOKIE_SECURE=true
+          COOKIE_SAMESITE=strict
+          CORS_ORIGINS=https://${{ secrets.DOMAIN }}
+          PLAID_CLIENT_ID=${{ secrets.PLAID_CLIENT_ID }}
+          PLAID_SECRET=${{ secrets.PLAID_SECRET }}
+          PLAID_ENV=${{ secrets.PLAID_ENV }}
+          PLAID_WEBHOOK_URL=https://${{ secrets.DOMAIN }}/api/plaid/webhook
+          APP_URL=https://${{ secrets.DOMAIN }}
+          API_URL=https://${{ secrets.DOMAIN }}
+          RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
+          LOGIN_RATE_LIMIT=5
+          GENERAL_RATE_LIMIT=100
+          API_IMAGE=${{ env.IMAGE_PREFIX }}-api:${{ github.sha }}
+          WEB_IMAGE=${{ env.IMAGE_PREFIX }}-web:${{ github.sha }}
+          DOMAIN=${{ secrets.DOMAIN }}
+          ACME_EMAIL=${{ secrets.ACME_EMAIL }}
+          ENVEOF
+
+      - name: Copy config files
+        run: |
+          cp docker-compose.prod.yml /opt/fynans/
+          cp Caddyfile /opt/fynans/
+
+      - name: Deploy
+        run: |
+          cd /opt/fynans
+
+          echo "=== Starting services ==="
+          docker compose -f docker-compose.prod.yml --env-file .env.production up -d
+
+          echo "=== Running database migrations ==="
+          # Wait for API container to be ready before running migrations
+          for i in $(seq 1 15); do
+            docker exec fynans-api-1 python -c "print('ready')" 2>/dev/null && break
+            echo "Waiting for API container... ($i/15)"
+            sleep 2
+          done
+          docker exec fynans-api-1 python -m alembic upgrade head
+
+          echo "=== Waiting for services ==="
+          for i in $(seq 1 30); do
+            API_OK=false
+            WEB_OK=false
+            docker exec fynans-api-1 python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')" 2>/dev/null && API_OK=true
+            docker exec fynans-web-1 node -e "require('http').get('http://localhost:3000/', (r) => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))" 2>/dev/null && WEB_OK=true
+            if [ "$API_OK" = true ] && [ "$WEB_OK" = true ]; then
+              echo "All services healthy!"
+              break
+            fi
+            echo "Waiting... ($i/30) API=$API_OK WEB=$WEB_OK"
+            sleep 5
+          done
+
+          if [ "$API_OK" != true ] || [ "$WEB_OK" != true ]; then
+            echo "=== HEALTH CHECK FAILED ==="
+            echo "API=$API_OK WEB=$WEB_OK"
+            docker compose -f docker-compose.prod.yml --env-file .env.production logs --tail 20
+            exit 1
+          fi
+
+          echo "=== Cleanup ==="
+          docker image prune -f
+
+          echo "=== Deployment complete ==="
+          docker compose -f docker-compose.prod.yml --env-file .env.production ps

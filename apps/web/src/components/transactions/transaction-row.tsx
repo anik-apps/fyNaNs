@@ -42,6 +42,7 @@ const CATEGORY_ICONS: Record<string, LucideIcon> = {
 
 const INCOME_CATEGORIES = new Set(["Income", "Salary", "Freelance", "Other Income", "Investments"]);
 const TRANSFER_CATEGORIES = new Set(["Transfer"]);
+
 interface TransactionRowProps {
   id: string;
   date: string;
@@ -58,14 +59,11 @@ interface TransactionRowProps {
 /**
  * Determine how to display a transaction amount.
  *
- * Plaid uses a unified sign convention for ALL account types:
- *   - Positive = money out (expense)
- *   - Negative = money in (income)
+ * Plaid sign convention (all account types):
+ *   - Positive = money OUT (expense)
+ *   - Negative = money IN (income)
  *
- * Category overrides take precedence:
- *   - Income categories always show as income
- *   - Transfer categories always show as neutral
- *   - Otherwise, fall back to the sign of the amount
+ * Category overrides sign when available (e.g., income categories).
  */
 function getDisplayType(
   amount: number,
