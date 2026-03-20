@@ -70,6 +70,7 @@ jobs:
           API_IMAGE=${{ env.IMAGE_PREFIX }}-api:${{ github.sha }}
           WEB_IMAGE=${{ env.IMAGE_PREFIX }}-web:${{ github.sha }}
           DOMAIN=${{ secrets.DOMAIN }}
+          ACME_EMAIL=${{ secrets.ACME_EMAIL }}
           ENVEOF
 
       - name: Copy config files
@@ -84,20 +85,24 @@ jobs:
           echo "=== Starting services ==="
           docker compose -f docker-compose.prod.yml --env-file .env.production up -d
 
-          echo "=== Waiting for health check ==="
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:8000/api/health > /dev/null 2>&1; then
-              echo "API healthy!"
+          echo "=== Waiting for services ==="
+          for i in $(seq 1 60); do
+            API_OK=false
+            WEB_OK=false
+            curl -sf http://localhost:8000/api/health > /dev/null 2>&1 && API_OK=true
+            node -e "require('http').get('http://localhost:3000/', (r) => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))" 2>/dev/null && WEB_OK=true
+            if [ "$API_OK" = true ] && [ "$WEB_OK" = true ]; then
+              echo "All services healthy!"
               break
             fi
-            echo "Waiting... ($i/30)"
+            echo "Waiting... ($i/60) API=$API_OK WEB=$WEB_OK"
             sleep 2
           done
 
-          curl -f http://localhost:8000/api/health || echo "WARNING: Health check failed"
+          curl -f http://localhost:8000/api/health || { echo "ERROR: API health check failed"; exit 1; }
 
           echo "=== Cleanup ==="
           docker image prune -f
 
           echo "=== Deployment complete ==="
-          docker compose -f docker-compose.prod.yml ps
+          docker compose -f docker-compose.prod.yml --env-file .env.production ps
