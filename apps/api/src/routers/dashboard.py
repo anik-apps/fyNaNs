@@ -86,12 +86,13 @@ async def net_worth_history(
     row = acct_result.one()
     current_nw = float(row.assets) - float(row.liabilities)
 
-    # Get all transactions in the period with their categories
+    # Get all transactions in the period with their categories and account types
     from src.models.category import Category
 
     txn_result = await db.execute(
-        select(Transaction.date, Transaction.amount, Category.name)
+        select(Transaction.date, Transaction.amount, Category.name, Account.type)
         .outerjoin(Category, Transaction.category_id == Category.id)
+        .join(Account, Transaction.account_id == Account.id)
         .where(
             Transaction.user_id == user_id,
             Transaction.date >= start_date,
@@ -100,28 +101,31 @@ async def net_worth_history(
     )
     transactions = txn_result.all()
 
-    # Determine NW impact per transaction using category as the source of truth.
-    # Plaid sandbox data has inconsistent signs (income sometimes positive),
-    # so we use category to determine direction:
-    #   - Income/Transfer-in categories: NW increased (regardless of sign)
-    #   - Transfer categories: NW unchanged (internal move)
-    #   - Everything else (expenses): NW decreased
+    # Determine NW impact using both category and amount sign.
+    # Plaid sandbox categories are unreliable (payroll classified as utilities),
+    # so we use a hybrid approach:
+    #   - Category in income_categories → income (NW increased)
+    #   - Category in transfer_categories → neutral
+    #   - For depository accounts: negative amount = money in (income)
+    #   - Everything else: expense (NW decreased)
     income_categories = {"Income", "Salary", "Freelance", "Other Income", "Investments"}
     transfer_categories = {"Transfer"}
+    depository_types = {"checking", "savings"}
 
     daily_deltas: dict[date, float] = {}
-    for txn_date, amount, cat_name in transactions:
+    for txn_date, amount, cat_name, acct_type in transactions:
         d = txn_date if isinstance(txn_date, date) else date.fromisoformat(str(txn_date))
-        abs_amount = abs(float(amount))
+        amt = float(amount)
 
         if cat_name in transfer_categories:
-            continue  # Transfers don't affect NW
+            continue
         elif cat_name in income_categories:
-            # Income increased NW → to reverse going backwards, subtract
-            delta = -abs_amount
+            delta = -abs(amt)
+        elif acct_type in depository_types and amt < 0:
+            # Negative in depository = money in (income) regardless of category
+            delta = -abs(amt)
         else:
-            # Expense decreased NW → to reverse going backwards, add
-            delta = abs_amount
+            delta = abs(amt)
 
         daily_deltas[d] = daily_deltas.get(d, 0) + delta
 
@@ -243,12 +247,19 @@ async def _compute_period_totals(
     income_categories: set[str],
     transfer_categories: set[str],
 ) -> tuple[float, float]:
-    """Compute total spending and income for a period using category-based logic."""
+    """Compute total spending and income for a period.
+
+    Uses category + amount sign hybrid approach because Plaid sandbox
+    categories are unreliable (payroll classified as utilities, etc.).
+    """
     from src.models.category import Category
 
+    depository_types = {"checking", "savings"}
+
     result = await db.execute(
-        select(Transaction.amount, Category.name)
+        select(Transaction.amount, Category.name, Account.type)
         .outerjoin(Category, Transaction.category_id == Category.id)
+        .join(Account, Transaction.account_id == Account.id)
         .where(
             Transaction.user_id == user_id,
             Transaction.date >= period_start,
@@ -258,13 +269,13 @@ async def _compute_period_totals(
 
     spending = 0.0
     income = 0.0
-    for amount, cat_name in result.all():
-        abs_amt = abs(float(amount))
+    for amount, cat_name, acct_type in result.all():
+        amt = float(amount)
         if cat_name in transfer_categories:
             continue
-        elif cat_name in income_categories:
-            income += abs_amt
+        elif cat_name in income_categories or (acct_type in depository_types and amt < 0):
+            income += abs(amt)
         else:
-            spending += abs_amt
+            spending += abs(amt)
 
     return spending, income
