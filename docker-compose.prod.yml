@@ -43,7 +43,8 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       PLAID_CLIENT_ID: ${PLAID_CLIENT_ID:-}
       PLAID_SECRET: ${PLAID_SECRET:-}
-      PLAID_ENVIRONMENT: ${PLAID_ENVIRONMENT:-sandbox}
+      PLAID_ENV: ${PLAID_ENVIRONMENT:-sandbox}
+      PLAID_WEBHOOK_URL: https://${DOMAIN}/api/plaid/webhook
       APP_URL: https://${DOMAIN}
       API_URL: https://${DOMAIN}
       CORS_ORIGINS: https://${DOMAIN}
