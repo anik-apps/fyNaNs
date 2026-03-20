@@ -30,6 +30,9 @@ class TransactionResponse(BaseModel):
     description: str
     merchant_name: str | None
     category_id: uuid.UUID | None
+    category_name: str | None = None
+    category_color: str | None = None
+    account_name: str | None = None
     is_pending: bool
     is_manual: bool
     notes: str | None

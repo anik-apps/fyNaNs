@@ -106,6 +106,77 @@ async def list_plaid_items(
     return response
 
 
+@router.post("/items/{item_id}/sync")
+async def sync_plaid_item(
+    item_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Manually trigger a transaction sync for a linked Plaid item."""
+    import uuid as uuid_mod
+
+    from src.services.plaid import has_credit_accounts, sync_liabilities, sync_transactions
+
+    result = await db.execute(
+        select(PlaidItem).where(
+            PlaidItem.id == uuid_mod.UUID(item_id),
+            PlaidItem.user_id == user.id,
+        )
+    )
+    plaid_item = result.scalar_one_or_none()
+    if not plaid_item:
+        raise HTTPException(status_code=404, detail="Plaid item not found")
+
+    if plaid_item.status != "active":
+        raise HTTPException(status_code=400, detail="Item is not active")
+
+    sync_result = await sync_transactions(db, plaid_item)
+
+    if await has_credit_accounts(db, plaid_item):
+        await sync_liabilities(db, plaid_item)
+
+    return {
+        "added": sync_result["added"],
+        "modified": sync_result["modified"],
+        "removed": sync_result["removed"],
+    }
+
+
+@router.post("/sync-all")
+async def sync_all_items(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Sync all active Plaid items for the current user."""
+    from src.services.plaid import has_credit_accounts, sync_liabilities, sync_transactions
+
+    result = await db.execute(
+        select(PlaidItem).where(
+            PlaidItem.user_id == user.id,
+            PlaidItem.status == "active",
+        )
+    )
+    items = result.scalars().all()
+
+    total = {"added": 0, "modified": 0, "removed": 0, "items_synced": 0}
+    for item in items:
+        try:
+            sync_result = await sync_transactions(db, item)
+            total["added"] += sync_result["added"]
+            total["modified"] += sync_result["modified"]
+            total["removed"] += sync_result["removed"]
+            total["items_synced"] += 1
+
+            if await has_credit_accounts(db, item):
+                await sync_liabilities(db, item)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("Sync failed for item %s: %s", item.id, e)
+            continue
+
+    return total
+
+
 @router.delete("/items/{item_id}")
 async def delete_plaid_item(
     item_id: uuid.UUID,
