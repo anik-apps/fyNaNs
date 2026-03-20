@@ -70,7 +70,7 @@ export function TransactionRow({
         <div className="flex items-center gap-1.5 mt-0.5">
           <span
             className="inline-block w-2 h-2 rounded-full flex-shrink-0"
-            style={{ backgroundColor: category_color }}
+            style={{ backgroundColor: category_color || '#6b7280' }}
           />
           <span className="text-xs text-muted-foreground truncate">
             {category_name}

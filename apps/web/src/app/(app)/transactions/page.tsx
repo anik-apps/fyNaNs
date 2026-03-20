@@ -24,19 +24,23 @@ export default function TransactionsPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [filterError, setFilterError] = useState<string | null>(null);
   const debouncedSearch = useDebounce(search, 300);
 
   useEffect(() => {
     async function fetchFilters() {
       try {
+        setFilterError(null);
         const [cats, accts] = await Promise.all([
           apiFetch<Category[]>("/api/categories"),
           apiFetch<Account[]>("/api/accounts"),
         ]);
         setCategories(cats);
         setAccounts(accts);
-      } catch {
-        // silently fail - filters just won't populate
+      } catch (err) {
+        setFilterError(
+          err instanceof Error ? err.message : "Failed to load filters"
+        );
       }
     }
     fetchFilters();
@@ -48,6 +52,11 @@ export default function TransactionsPage() {
         <h1 className="text-2xl font-bold">Transactions</h1>
         <ImportDialog onImported={() => setRefreshKey((k) => k + 1)} />
       </div>
+      {filterError && (
+        <div className="p-4 text-sm text-destructive bg-destructive/10 rounded-md">
+          {filterError}
+        </div>
+      )}
       <TransactionFilters
         search={search}
         onSearchChange={setSearch}

@@ -67,8 +67,8 @@ export function RecentTransactions({ transactions }: RecentTransactionsProps) {
                         variant="secondary"
                         className="text-xs"
                         style={{
-                          backgroundColor: `${txn.category_color}20`,
-                          color: txn.category_color,
+                          backgroundColor: `${txn.category_color || '#6b7280'}20`,
+                          color: txn.category_color || '#6b7280',
                         }}
                       >
                         {txn.category_name}
