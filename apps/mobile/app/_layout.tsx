@@ -6,15 +6,14 @@ import { AuthProvider } from "@/src/providers/AuthProvider";
 import { ThemeProvider } from "@/src/providers/ThemeProvider";
 import { useBiometric } from "@/src/hooks/useBiometric";
 import { useAuth } from "@/src/hooks/useAuth";
-import { usePushNotifications } from "@/src/hooks/usePushNotifications";
+// Push notifications removed from Expo Go SDK 53+
+// import { usePushNotifications } from "@/src/hooks/usePushNotifications";
 
 function AppContent({ children }: { children: React.ReactNode }) {
   const appState = useRef(AppState.currentState);
   const { isEnabled, authenticate } = useBiometric();
   const { user } = useAuth();
   const [isLocked, setIsLocked] = useState(false);
-
-  usePushNotifications();
 
   useEffect(() => {
     const subscription = AppState.addEventListener(
