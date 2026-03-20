@@ -98,6 +98,14 @@ jobs:
           echo "=== Starting services ==="
           docker compose -f docker-compose.prod.yml --env-file .env.production up -d
 
+          echo "=== Running database migrations ==="
+          for i in $(seq 1 15); do
+            docker exec fynans-api-1 python -c "print('ready')" 2>/dev/null && break
+            echo "Waiting for API container... ($i/15)"
+            sleep 2
+          done
+          docker exec fynans-api-1 python -m alembic upgrade head
+
           echo "=== Waiting for services ==="
           for i in $(seq 1 30); do
             API_OK=false
