@@ -10,7 +10,7 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   webServer: {
-    command: 'pnpm dev',
+    command: process.env.CI ? 'pnpm dev:webpack' : 'pnpm dev',
     port: 3000,
     timeout: 120000,
     reuseExistingServer: !process.env.CI,
