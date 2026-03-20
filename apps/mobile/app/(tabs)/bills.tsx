@@ -8,7 +8,7 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from "react-native";
-import { Plus } from "lucide-react-native";
+import { Plus, Receipt } from "lucide-react-native";
 import { BillCard } from "@/src/components/bills/BillCard";
 import { BillForm } from "@/src/components/bills/BillForm";
 import { EmptyState } from "@/src/components/shared/EmptyState";
@@ -76,37 +76,39 @@ export default function BillsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.surface }]}>
-      {/* Segment control */}
-      <View
-        style={[styles.segmentRow, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
-      >
-        {(["all", "upcoming"] as const).map((f) => (
-          <TouchableOpacity
-            key={f}
-            style={[
-              styles.segmentBtn,
-              {
-                backgroundColor:
-                  filter === f ? theme.colors.primary : "transparent",
-              },
-            ]}
-            onPress={() => setFilter(f)}
-          >
-            <Text
-              style={{
-                color:
-                  filter === f
-                    ? theme.colors.primaryText
-                    : theme.colors.text,
-                fontWeight: "500",
-                fontSize: 14,
-              }}
+      {/* Segment control — only shown when there are bills */}
+      {(data?.length ?? 0) > 0 && (
+        <View
+          style={[styles.segmentRow, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
+        >
+          {(["all", "upcoming"] as const).map((f) => (
+            <TouchableOpacity
+              key={f}
+              style={[
+                styles.segmentBtn,
+                {
+                  backgroundColor:
+                    filter === f ? theme.colors.primary : "transparent",
+                },
+              ]}
+              onPress={() => setFilter(f)}
             >
-              {f === "all" ? "All" : "Upcoming"}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+              <Text
+                style={{
+                  color:
+                    filter === f
+                      ? theme.colors.primaryText
+                      : theme.colors.text,
+                  fontWeight: "500",
+                  fontSize: 14,
+                }}
+              >
+                {f === "all" ? "All" : "Upcoming"}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
 
       <FlatList
         data={filteredBills}
@@ -128,8 +130,9 @@ export default function BillsScreen() {
         contentContainerStyle={styles.list}
         ListEmptyComponent={
           <EmptyState
-            title="No bills"
-            description="Add your recurring bills to track due dates"
+            icon={<Receipt color={theme.colors.primary} size={32} />}
+            title="No bills yet"
+            description="Track recurring bills and never miss a payment"
             action={
               <TouchableOpacity
                 style={[styles.addBtn, { backgroundColor: theme.colors.primary }]}
