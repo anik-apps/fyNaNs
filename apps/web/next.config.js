@@ -2,16 +2,6 @@
 const nextConfig = {
   transpilePackages: ["@fynans/api-client", "@fynans/shared-types"],
   output: "standalone",
-  webpack: (config, { dev }) => {
-    if (dev) {
-      // Enable polling for file watching (fixes hot reload on some systems)
-      config.watchOptions = {
-        poll: 1000,
-        aggregateTimeout: 300,
-      };
-    }
-    return config;
-  },
   async rewrites() {
     // Proxy /api/* to the backend in development.
     // This makes API calls same-origin, so cookies work without cross-origin issues.
