@@ -99,19 +99,6 @@ async def exchange_public_token(
     if existing.scalar_one_or_none():
         raise PlaidServiceError("This institution is already linked", 409)
 
-    # Check if user already has a link to this institution (prevent duplicates)
-    existing_institution = await db.execute(
-        select(PlaidItem).where(
-            PlaidItem.user_id == user_id,
-            PlaidItem.institution_name == institution_name,
-            PlaidItem.status == "active",
-        )
-    )
-    if existing_institution.scalar_one_or_none():
-        raise PlaidServiceError(
-            f"{institution_name} is already linked. Unlink it first to re-link.", 409
-        )
-
     # Encrypt access token before storing
     encrypted_token = encrypt_value(access_token)
 
@@ -140,6 +127,20 @@ async def exchange_public_token(
 
     num_linked = 0
     for plaid_acct in accounts_response.accounts:
+        # Dedup: skip if this plaid_account_id already exists for this user
+        # (user may re-link the same bank — update balance instead of duplicating)
+        existing_result = await db.execute(
+            select(Account).where(
+                Account.user_id == user_id,
+                Account.plaid_account_id == plaid_acct.account_id,
+            )
+        )
+        existing_acct = existing_result.scalars().first()
+        if existing_acct:
+            existing_acct.balance = plaid_acct.balances.current or 0
+            existing_acct.plaid_item_id = plaid_item.id
+            continue
+
         # Map Plaid subtypes
         acct_type = account_type_map.get(
             plaid_acct.type.value if hasattr(plaid_acct.type, "value") else str(plaid_acct.type),
