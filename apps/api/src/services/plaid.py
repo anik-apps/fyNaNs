@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -23,6 +24,8 @@ from src.core.security import decrypt_value, encrypt_value
 from src.models.account import Account
 from src.models.plaid_item import PlaidItem
 from src.models.transaction import Transaction
+
+logger = logging.getLogger(__name__)
 
 
 class PlaidServiceError(Exception):
@@ -628,23 +631,33 @@ async def handle_webhook_event(
     db: AsyncSession, webhook_type: str, webhook_code: str, item_id: str
 ) -> None:
     """Process a Plaid webhook event."""
-    if webhook_type == "TRANSACTIONS" and webhook_code == "SYNC_UPDATES_AVAILABLE":
-        # Find the PlaidItem by item_id
+    logger.info("Webhook received: type=%s code=%s item_id=%s", webhook_type, webhook_code, item_id)
+
+    # All transaction webhook codes that should trigger a sync
+    sync_codes = {
+        "SYNC_UPDATES_AVAILABLE",  # New Transactions Sync API
+        "INITIAL_UPDATE",          # Legacy: initial transactions ready
+        "HISTORICAL_UPDATE",       # Legacy: historical transactions ready
+        "DEFAULT_UPDATE",          # Legacy: new transactions available
+    }
+
+    if webhook_type == "TRANSACTIONS" and webhook_code in sync_codes:
         result = await db.execute(
             select(PlaidItem).where(PlaidItem.item_id == item_id)
         )
         plaid_item = result.scalar_one_or_none()
         if plaid_item and plaid_item.status == "active":
-            await sync_transactions(db, plaid_item)
+            sync_result = await sync_transactions(db, plaid_item)
+            logger.info("Sync complete for item %s: %s", item_id, sync_result)
 
-            # Also sync liabilities if credit accounts exist
             if await has_credit_accounts(db, plaid_item):
                 await sync_liabilities(db, plaid_item)
 
-            # Trigger budget alerts after transaction sync
             from src.jobs.budget_alerts import check_budget_alerts
 
             await check_budget_alerts(db, user_id=plaid_item.user_id)
+        else:
+            logger.warning("Webhook for unknown/inactive item: %s", item_id)
 
     elif webhook_type == "ITEM" and webhook_code == "ERROR":
         result = await db.execute(

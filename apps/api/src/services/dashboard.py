@@ -260,40 +260,45 @@ async def _get_spending_comparison(
 ) -> SpendingComparison:
     """Compare spending this month vs last month.
 
-    Note: Compares partial current month against full previous month.
-    Early in the month, current spending will naturally be lower.
+    Uses category + amount sign hybrid to separate spending from income,
+    same approach as the other dashboard endpoints.
     """
     today = today or date.today()
     current_month_start = today.replace(day=1)
 
-    # Previous month start
     if today.month == 1:
         prev_month_start = today.replace(year=today.year - 1, month=12, day=1)
     else:
         prev_month_start = today.replace(month=today.month - 1, day=1)
     prev_month_end = current_month_start - timedelta(days=1)
 
-    # Current month spending
-    current_result = await db.execute(
-        select(func.coalesce(func.sum(Transaction.amount), 0)).where(
-            Transaction.user_id == user_id,
-            Transaction.date >= current_month_start,
-            Transaction.date <= today,
-            Transaction.amount > 0,  # Expenses only
-        )
-    )
-    current_total = Decimal(str(current_result.scalar()))
+    income_categories = {"Income", "Salary", "Freelance", "Other Income", "Investments"}
+    transfer_categories = {"Transfer"}
 
-    # Previous month spending
-    prev_result = await db.execute(
-        select(func.coalesce(func.sum(Transaction.amount), 0)).where(
-            Transaction.user_id == user_id,
-            Transaction.date >= prev_month_start,
-            Transaction.date <= prev_month_end,
-            Transaction.amount > 0,
+    from src.models.category import Category
+
+    async def _sum_spending(start: date, end: date) -> Decimal:
+        result = await db.execute(
+            select(Transaction.amount, Category.name)
+            .outerjoin(Category, Transaction.category_id == Category.id)
+            .where(
+                Transaction.user_id == user_id,
+                Transaction.date >= start,
+                Transaction.date <= end,
+            )
         )
-    )
-    prev_total = Decimal(str(prev_result.scalar()))
+        total = 0.0
+        for amt_val, cat_name in result.all():
+            amt = float(amt_val)
+            if cat_name in transfer_categories:
+                continue
+            if cat_name in income_categories or amt < 0:
+                continue  # Income — skip
+            total += abs(amt)
+        return Decimal(str(round(total, 2)))
+
+    current_total = await _sum_spending(current_month_start, today)
+    prev_total = await _sum_spending(prev_month_start, prev_month_end)
 
     difference = current_total - prev_total
     percent_change = (

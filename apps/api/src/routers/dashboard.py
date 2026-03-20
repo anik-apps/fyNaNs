@@ -100,28 +100,29 @@ async def net_worth_history(
     )
     transactions = txn_result.all()
 
-    # Determine NW impact per transaction using category as the source of truth.
-    # Plaid sandbox data has inconsistent signs (income sometimes positive),
-    # so we use category to determine direction:
-    #   - Income/Transfer-in categories: NW increased (regardless of sign)
-    #   - Transfer categories: NW unchanged (internal move)
-    #   - Everything else (expenses): NW decreased
+    # Determine NW impact using category + Plaid sign convention.
+    # Plaid sign convention (all account types):
+    #   positive = money out, negative = money in
+    # Category overrides sign for known income/transfer categories.
     income_categories = {"Income", "Salary", "Freelance", "Other Income", "Investments"}
     transfer_categories = {"Transfer"}
 
     daily_deltas: dict[date, float] = {}
     for txn_date, amount, cat_name in transactions:
         d = txn_date if isinstance(txn_date, date) else date.fromisoformat(str(txn_date))
-        abs_amount = abs(float(amount))
+        amt = float(amount)
 
         if cat_name in transfer_categories:
-            continue  # Transfers don't affect NW
+            continue
         elif cat_name in income_categories:
             # Income increased NW → to reverse going backwards, subtract
-            delta = -abs_amount
+            delta = -abs(amt)
+        elif amt < 0:
+            # Negative = money in (income) per Plaid convention
+            delta = -abs(amt)
         else:
-            # Expense decreased NW → to reverse going backwards, add
-            delta = abs_amount
+            # Positive = money out (expense)
+            delta = abs(amt)
 
         daily_deltas[d] = daily_deltas.get(d, 0) + delta
 
@@ -243,7 +244,11 @@ async def _compute_period_totals(
     income_categories: set[str],
     transfer_categories: set[str],
 ) -> tuple[float, float]:
-    """Compute total spending and income for a period using category-based logic."""
+    """Compute total spending and income for a period.
+
+    Uses Plaid sign convention (positive = out, negative = in)
+    with category override for known income/transfer categories.
+    """
     from src.models.category import Category
 
     result = await db.execute(
@@ -259,12 +264,12 @@ async def _compute_period_totals(
     spending = 0.0
     income = 0.0
     for amount, cat_name in result.all():
-        abs_amt = abs(float(amount))
+        amt = float(amount)
         if cat_name in transfer_categories:
             continue
-        elif cat_name in income_categories:
-            income += abs_amt
+        elif cat_name in income_categories or amt < 0:
+            income += abs(amt)
         else:
-            spending += abs_amt
+            spending += abs(amt)
 
     return spending, income

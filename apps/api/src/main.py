@@ -28,7 +28,17 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app):
-    # Startup
+    # Startup: seed system categories
+    try:
+        from src.core.database import async_session_factory
+        from src.services.seed_categories import seed_system_categories
+
+        async with async_session_factory() as db:
+            await seed_system_categories(db)
+    except Exception:
+        logger.warning("Category seeding failed (non-fatal)", exc_info=True)
+
+    # Startup: scheduler
     try:
         from src.jobs.scheduler import scheduler, setup_jobs
 
