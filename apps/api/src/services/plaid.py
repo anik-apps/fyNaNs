@@ -99,6 +99,19 @@ async def exchange_public_token(
     if existing.scalar_one_or_none():
         raise PlaidServiceError("This institution is already linked", 409)
 
+    # Check if user already has a link to this institution (prevent duplicates)
+    existing_institution = await db.execute(
+        select(PlaidItem).where(
+            PlaidItem.user_id == user_id,
+            PlaidItem.institution_name == institution_name,
+            PlaidItem.status == "active",
+        )
+    )
+    if existing_institution.scalar_one_or_none():
+        raise PlaidServiceError(
+            f"{institution_name} is already linked. Unlink it first to re-link.", 409
+        )
+
     # Encrypt access token before storing
     encrypted_token = encrypt_value(access_token)
 
