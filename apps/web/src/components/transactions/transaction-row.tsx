@@ -5,8 +5,63 @@ import { formatCurrency, formatRelativeDate, cn } from "@/lib/utils";
 import {
   ArrowDownLeft,
   ArrowUpRight,
+  Banknote,
   Clock,
+  Coffee,
+  CreditCard,
+  Film,
+  Gift,
+  GraduationCap,
+  Heart,
+  Home,
+  type LucideIcon,
+  Package,
+  Receipt,
+  ShoppingBag,
+  TrendingUp,
+  Truck,
+  Utensils,
+  Wallet,
+  Zap,
 } from "lucide-react";
+
+const CATEGORY_ICONS: Record<string, LucideIcon> = {
+  "Income": Banknote,
+  "Salary": Banknote,
+  "Freelance": Banknote,
+  "Investments": TrendingUp,
+  "Other Income": Banknote,
+  "Food & Drink": Utensils,
+  "Groceries": ShoppingBag,
+  "Restaurants": Coffee,
+  "Transportation": Truck,
+  "Gas": Zap,
+  "Public Transit": Truck,
+  "Rideshare": Truck,
+  "Housing": Home,
+  "Rent": Home,
+  "Mortgage": Home,
+  "Utilities": Zap,
+  "Shopping": ShoppingBag,
+  "Clothing": ShoppingBag,
+  "Electronics": Package,
+  "General": Package,
+  "Entertainment": Film,
+  "Streaming": Film,
+  "Events": Film,
+  "Hobbies": Film,
+  "Health": Heart,
+  "Doctor": Heart,
+  "Pharmacy": Heart,
+  "Fitness": Heart,
+  "Insurance": CreditCard,
+  "Education": GraduationCap,
+  "Personal": Wallet,
+  "Gifts & Donations": Gift,
+  "Fees & Charges": Receipt,
+  "Transfer": ArrowUpRight,
+  "Uncategorized": Package,
+};
 
 interface TransactionRowProps {
   id: string;
@@ -32,26 +87,23 @@ export function TransactionRow({
 }: TransactionRowProps) {
   const numAmount = parseFloat(amount);
   const isExpense = numAmount > 0;
+  const CategoryIcon = CATEGORY_ICONS[category_name] || Package;
+  const color = category_color || "#6b7280";
 
   return (
     <div className="flex items-center gap-3 py-3 px-2 hover:bg-accent/50 rounded-md transition-colors">
-      {/* Icon */}
+      {/* Category Icon */}
       <div
         className={cn(
           "flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center",
-          is_pending
-            ? "bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30"
-            : isExpense
-              ? "bg-red-100 text-red-600 dark:bg-red-900/30"
-              : "bg-green-100 text-green-600 dark:bg-green-900/30"
+          is_pending && "opacity-50"
         )}
+        style={{ backgroundColor: `${color}20`, color }}
       >
         {is_pending ? (
           <Clock className="w-4 h-4" />
-        ) : isExpense ? (
-          <ArrowUpRight className="w-4 h-4" />
         ) : (
-          <ArrowDownLeft className="w-4 h-4" />
+          <CategoryIcon className="w-4 h-4" />
         )}
       </div>
 
@@ -68,10 +120,6 @@ export function TransactionRow({
           )}
         </div>
         <div className="flex items-center gap-1.5 mt-0.5">
-          <span
-            className="inline-block w-2 h-2 rounded-full flex-shrink-0"
-            style={{ backgroundColor: category_color || '#6b7280' }}
-          />
           <span className="text-xs text-muted-foreground truncate">
             {category_name}
           </span>
@@ -87,17 +135,24 @@ export function TransactionRow({
       </div>
 
       {/* Amount */}
-      <span
-        className={cn(
-          "text-sm font-semibold ml-2 whitespace-nowrap",
-          isExpense
-            ? "text-red-600 dark:text-red-400"
-            : "text-green-600 dark:text-green-400"
+      <div className="text-right flex items-center gap-1.5">
+        {isExpense ? (
+          <ArrowUpRight className="w-3 h-3 text-red-500 dark:text-red-400" />
+        ) : (
+          <ArrowDownLeft className="w-3 h-3 text-green-500 dark:text-green-400" />
         )}
-      >
-        {isExpense ? "-" : "+"}
-        {formatCurrency(Math.abs(numAmount))}
-      </span>
+        <span
+          className={cn(
+            "text-sm font-semibold whitespace-nowrap",
+            isExpense
+              ? "text-red-600 dark:text-red-400"
+              : "text-green-600 dark:text-green-400"
+          )}
+        >
+          {isExpense ? "-" : "+"}
+          {formatCurrency(Math.abs(numAmount))}
+        </span>
+      </div>
     </div>
   );
 }

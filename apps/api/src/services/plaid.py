@@ -193,36 +193,69 @@ async def get_decrypted_access_token(plaid_item: PlaidItem) -> str:
 # --- Transaction Sync ---
 
 
+_PLAID_CATEGORY_MAP: dict[str, str] = {
+    # Plaid personal_finance_category.primary -> our category name
+    "INCOME": "Income",
+    "TRANSFER_IN": "Income",
+    "TRANSFER_OUT": "Transfer",
+    "LOAN_PAYMENTS": "Transfer",
+    "BANK_FEES": "Fees & Charges",
+    "ENTERTAINMENT": "Entertainment",
+    "FOOD_AND_DRINK": "Food & Drink",
+    "GENERAL_MERCHANDISE": "Shopping",
+    "HOME_IMPROVEMENT": "Housing",
+    "MEDICAL": "Health",
+    "PERSONAL_CARE": "Personal",
+    "GENERAL_SERVICES": "Personal",
+    "GOVERNMENT_AND_NON_PROFIT": "Gifts & Donations",
+    "TRANSPORTATION": "Transportation",
+    "TRAVEL": "Transportation",
+    "RENT_AND_UTILITIES": "Housing",
+}
+
+
 async def _resolve_category_id(
     db: AsyncSession, plaid_category_primary: str | None
 ) -> uuid.UUID | None:
-    """Map Plaid personal_finance_category to our Category by plaid_category column.
+    """Map Plaid personal_finance_category.primary to our Category.
 
-    The Category model has a `plaid_category` field that stores the Plaid primary
-    category string (e.g., "FOOD_AND_DRINK"). We match directly on that column.
-    Falls back to 'Uncategorized' if no match found.
+    Uses a static map from Plaid's category names to our category names,
+    then looks up by name in the database. Falls back to 'Uncategorized'.
     """
-    if plaid_category_primary:
-        from src.models.category import Category
+    from src.models.category import Category
 
-        # Direct match on the plaid_category column
+    if plaid_category_primary:
+        # Try static map first
+        our_category_name = _PLAID_CATEGORY_MAP.get(plaid_category_primary.upper())
+
+        if our_category_name:
+            result = await db.execute(
+                select(Category).where(
+                    Category.is_system.is_(True),
+                    Category.name == our_category_name,
+                    Category.parent_id.is_(None),  # Match parent category
+                )
+            )
+            cat = result.scalars().first()
+            if cat:
+                return cat.id
+
+        # Also try direct match on plaid_category column (for manually mapped categories)
         result = await db.execute(
             select(Category).where(
                 Category.is_system.is_(True),
                 Category.plaid_category == plaid_category_primary,
             )
         )
-        cat = result.scalar_one_or_none()
+        cat = result.scalars().first()
         if cat:
             return cat.id
 
     # Fallback to Uncategorized
-    from src.models.category import Category
-
     result = await db.execute(
         select(Category).where(Category.name == "Uncategorized", Category.is_system.is_(True))
     )
-    uncat = result.scalar_one_or_none()
+    uncat = result.scalars().first()
     return uncat.id if uncat else None
 
 
