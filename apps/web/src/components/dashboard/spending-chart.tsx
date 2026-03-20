@@ -150,7 +150,18 @@ export function SpendingChart({
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Spending & Income
             </CardTitle>
-            {viewButtons}
+            <div className="flex items-center gap-1">
+              {viewButtons}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0"
+                onClick={() => setModalOpen(true)}
+                title="Expand chart"
+              >
+                <Expand className="w-3.5 h-3.5 text-muted-foreground" />
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -169,14 +180,9 @@ export function SpendingChart({
 
           {chartData.length > 0 && !isLoading && (
             <div
-              className="h-40 -mx-2 cursor-pointer relative group"
+              className="h-40 -mx-2 cursor-pointer"
               onClick={() => setModalOpen(true)}
             >
-              <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                <div className="bg-background/80 rounded p-1">
-                  <Expand className="w-3.5 h-3.5 text-muted-foreground" />
-                </div>
-              </div>
               <SpendingBarChart data={chartData} height="100%" />
             </div>
           )}
