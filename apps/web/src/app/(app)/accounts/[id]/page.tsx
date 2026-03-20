@@ -7,6 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency, formatRelativeDate, cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/api-client";
+import { TransactionRow } from "@/components/transactions/transaction-row";
+import {
+  Building2, CreditCard, Landmark, PiggyBank, TrendingUp, Wallet,
+} from "lucide-react";
 
 interface AccountDetail {
   id: string;
@@ -26,17 +30,17 @@ interface Transaction {
   amount: string;
   category_name: string;
   category_color: string;
+  account_name: string;
+  account_type: string;
   is_pending: boolean;
 }
 
-const TYPE_LABELS: Record<string, string> = {
-  checking: "Checking",
-  savings: "Savings",
-  credit_card: "Credit Card",
-  investment: "Investment",
-  loan: "Loan",
-  mortgage: "Mortgage",
-  other: "Other",
+const TYPE_CONFIG: Record<string, { label: string; icon: typeof Wallet; color: string }> = {
+  checking: { label: "Checking", icon: Wallet, color: "text-blue-600 bg-blue-100 dark:bg-blue-900/30" },
+  savings: { label: "Savings", icon: PiggyBank, color: "text-green-600 bg-green-100 dark:bg-green-900/30" },
+  credit: { label: "Credit Card", icon: CreditCard, color: "text-orange-600 bg-orange-100 dark:bg-orange-900/30" },
+  investment: { label: "Investment", icon: TrendingUp, color: "text-purple-600 bg-purple-100 dark:bg-purple-900/30" },
+  loan: { label: "Loan", icon: Landmark, color: "text-red-600 bg-red-100 dark:bg-red-900/30" },
 };
 
 export default function AccountDetailPage() {
@@ -80,23 +84,32 @@ export default function AccountDetailPage() {
     return <div className="text-center py-12 text-muted-foreground">Account not found</div>;
   }
 
+  const config = TYPE_CONFIG[account.type] || { label: account.type, icon: Building2, color: "text-gray-600 bg-gray-100 dark:bg-gray-900/30" };
+  const Icon = config.icon;
+  const isLiability = account.type === "credit" || account.type === "loan";
+
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">{account.name}</h1>
 
       <Card>
         <CardHeader className="pb-2">
-          <div className="flex items-center gap-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {account.institution_name}
-            </CardTitle>
-            <Badge variant="secondary">
-              {TYPE_LABELS[account.type] || account.type}
-            </Badge>
+          <div className="flex items-center gap-3">
+            <div className={cn("w-10 h-10 rounded-full flex items-center justify-center", config.color)}>
+              <Icon className="w-5 h-5" />
+            </div>
+            <div>
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                {account.institution_name}
+              </CardTitle>
+              <Badge variant="secondary" className="mt-0.5">
+                {config.label}
+              </Badge>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
-          <p className="text-3xl font-bold">
+          <p className={cn("text-3xl font-bold", isLiability && "text-red-600 dark:text-red-400")}>
             {formatCurrency(account.balance, account.currency)}
           </p>
           {account.last_synced && (
@@ -119,52 +132,22 @@ export default function AccountDetailPage() {
               No transactions for this account
             </p>
           ) : (
-            <div className="space-y-3">
-              {transactions.map((txn) => {
-                const amount = parseFloat(txn.amount);
-                const isExpense = amount > 0;
-                return (
-                  <div
-                    key={txn.id}
-                    className="flex items-center justify-between"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">
-                        {txn.merchant_name || txn.description}
-                      </p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <Badge
-                          variant="secondary"
-                          className="text-xs"
-                          style={{
-                            backgroundColor: `${txn.category_color}20`,
-                            color: txn.category_color,
-                          }}
-                        >
-                          {txn.category_name}
-                        </Badge>
-                        <span className="text-xs text-muted-foreground">
-                          {formatRelativeDate(txn.date)}
-                        </span>
-                        {txn.is_pending && (
-                          <Badge variant="outline" className="text-xs">
-                            Pending
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                    <span
-                      className={cn(
-                        "text-sm font-medium ml-2",
-                        isExpense ? "text-red-600" : "text-green-600"
-                      )}
-                    >
-                      {isExpense ? "-" : "+"}
-                      {formatCurrency(Math.abs(amount))}
-                    </span>
-                  </div>
-                );
-              })}
+            <div className="space-y-1">
+              {transactions.map((txn) => (
+                <TransactionRow
+                  key={txn.id}
+                  id={txn.id}
+                  date={txn.date}
+                  description={txn.description}
+                  merchant_name={txn.merchant_name}
+                  amount={txn.amount}
+                  category_name={txn.category_name}
+                  category_color={txn.category_color}
+                  account_name={txn.account_name || account.name}
+                  account_type={txn.account_type || account.type}
+                  is_pending={txn.is_pending}
+                />
+              ))}
             </div>
           )}
         </CardContent>
