@@ -5,11 +5,12 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
-  Dimensions,
+  useWindowDimensions,
 } from "react-native";
 import Svg, { Path, Text as SvgText } from "react-native-svg";
 import { formatCurrency } from "@/src/lib/utils";
 import { useTheme } from "@/src/providers/ThemeProvider";
+import type { Theme } from "@/src/lib/theme";
 import { apiFetch } from "@/src/lib/api-client";
 
 interface NetWorthData {
@@ -46,11 +47,12 @@ function NetWorthChart({
 }: {
   data: NetWorthPoint[];
   period: string;
-  theme: any;
+  theme: Theme;
 }) {
+  const { width: screenWidth } = useWindowDimensions();
+
   if (data.length < 2) return null;
 
-  const screenWidth = Dimensions.get("window").width;
   const chartWidth = screenWidth - 64; // card padding + margins
   const chartHeight = 120;
   const paddingTop = 8;
@@ -121,9 +123,11 @@ export function NetWorthCard({ data }: { data: NetWorthData }) {
   const [period, setPeriod] = useState("1m");
   const [chartData, setChartData] = useState<NetWorthPoint[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [chartError, setChartError] = useState(false);
 
   const fetchHistory = useCallback(async (p: string) => {
     setIsLoading(true);
+    setChartError(false);
     try {
       const result = await apiFetch<{ points: NetWorthPoint[] }>(
         `/api/dashboard/net-worth-history?period=${p}`
@@ -131,6 +135,7 @@ export function NetWorthCard({ data }: { data: NetWorthData }) {
       setChartData(result.points);
     } catch {
       setChartData([]);
+      setChartError(true);
     } finally {
       setIsLoading(false);
     }
@@ -192,7 +197,14 @@ export function NetWorthCard({ data }: { data: NetWorthData }) {
           <ActivityIndicator size="small" color={theme.colors.primary} />
         </View>
       )}
-      {!isLoading && chartData.length > 1 && (
+      {!isLoading && chartError && (
+        <View style={styles.loadingContainer}>
+          <Text style={{ color: theme.colors.textSecondary, fontSize: 13 }}>
+            Could not load chart
+          </Text>
+        </View>
+      )}
+      {!isLoading && !chartError && chartData.length > 1 && (
         <NetWorthChart data={chartData} period={period} theme={theme} />
       )}
 

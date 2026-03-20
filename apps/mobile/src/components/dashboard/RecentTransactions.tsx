@@ -1,16 +1,8 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { formatCurrency, formatRelativeDate } from "@/src/lib/utils";
+import { getDisplayType } from "@/src/lib/transaction-utils";
 import { useTheme } from "@/src/providers/ThemeProvider";
-
-const INCOME_CATEGORIES = new Set([
-  "Income",
-  "Salary",
-  "Freelance",
-  "Other Income",
-  "Investments",
-]);
-const TRANSFER_CATEGORIES = new Set(["Transfer"]);
 
 interface Transaction {
   id: string;
@@ -19,19 +11,6 @@ interface Transaction {
   merchant_name: string | null;
   amount: string | number;
   category_name: string;
-}
-
-/**
- * Unified Plaid sign convention: positive = expense, negative = income.
- * Category overrides take precedence over sign.
- */
-function getDisplayType(
-  amount: number,
-  categoryName: string,
-): "income" | "expense" | "transfer" {
-  if (TRANSFER_CATEGORIES.has(categoryName)) return "transfer";
-  if (INCOME_CATEGORIES.has(categoryName)) return "income";
-  return amount < 0 ? "income" : "expense";
 }
 
 export function RecentTransactions({

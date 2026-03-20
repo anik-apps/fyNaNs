@@ -12,7 +12,6 @@ interface Transaction {
   category_name: string;
   category_color?: string;
   account_name: string;
-  account_type?: string;
   is_pending: boolean;
 }
 

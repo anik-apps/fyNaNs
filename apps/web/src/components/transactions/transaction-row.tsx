@@ -42,8 +42,6 @@ const CATEGORY_ICONS: Record<string, LucideIcon> = {
 
 const INCOME_CATEGORIES = new Set(["Income", "Salary", "Freelance", "Other Income", "Investments"]);
 const TRANSFER_CATEGORIES = new Set(["Transfer"]);
-const LIABILITY_ACCOUNT_TYPES = new Set(["credit", "loan"]);
-
 interface TransactionRowProps {
   id: string;
   date: string;
@@ -60,30 +58,21 @@ interface TransactionRowProps {
 /**
  * Determine how to display a transaction amount.
  *
- * Plaid sign conventions differ by account type:
- *   - Depository (checking/savings): positive = money OUT, negative = money IN
- *   - Credit cards: ALL transactions are positive in sandbox.
- *     Charges (expenses) and payments (TRANSFER_OUT) are both positive.
- *     Only category distinguishes them.
+ * Plaid uses a unified sign convention for ALL account types:
+ *   - Positive = money out (expense)
+ *   - Negative = money in (income)
  *
- * NOTE: Plaid sandbox credit card data may not accurately reflect real-world
- * sign conventions. In production, credit card transactions may have negative
- * amounts for credits/refunds. This logic handles both cases.
+ * Category overrides take precedence:
+ *   - Income categories always show as income
+ *   - Transfer categories always show as neutral
+ *   - Otherwise, fall back to the sign of the amount
  */
 function getDisplayType(
   amount: number,
   categoryName: string,
-  accountType: string,
 ): "income" | "expense" | "transfer" {
   if (TRANSFER_CATEGORIES.has(categoryName)) return "transfer";
   if (INCOME_CATEGORIES.has(categoryName)) return "income";
-
-  if (LIABILITY_ACCOUNT_TYPES.has(accountType)) {
-    // Credit/loan: positive = charge (expense), negative = payment/credit (income-like)
-    return amount < 0 ? "income" : "expense";
-  }
-
-  // Depository: positive = money out (expense), negative = money in (income)
   return amount < 0 ? "income" : "expense";
 }
 
@@ -95,12 +84,11 @@ export function TransactionRow({
   category_name,
   category_color,
   account_name,
-  account_type = "checking",
   is_pending,
 }: TransactionRowProps) {
   const numAmount = parseFloat(amount);
   const absAmount = Math.abs(numAmount);
-  const displayType = getDisplayType(numAmount, category_name, account_type);
+  const displayType = getDisplayType(numAmount, category_name);
 
   const CategoryIcon = CATEGORY_ICONS[category_name] || Package;
   const color = category_color || "#6b7280";

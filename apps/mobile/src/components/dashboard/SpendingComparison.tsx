@@ -5,11 +5,12 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
-  Dimensions,
+  useWindowDimensions,
 } from "react-native";
 import Svg, { Rect, Text as SvgText } from "react-native-svg";
 import { formatCurrency } from "@/src/lib/utils";
 import { useTheme } from "@/src/providers/ThemeProvider";
+import type { Theme } from "@/src/lib/theme";
 import { apiFetch } from "@/src/lib/api-client";
 
 interface SpendingData {
@@ -39,11 +40,12 @@ function SpendingBarChart({
   theme,
 }: {
   data: SpendingPoint[];
-  theme: any;
+  theme: Theme;
 }) {
+  const { width: screenWidth } = useWindowDimensions();
+
   if (data.length === 0) return null;
 
-  const screenWidth = Dimensions.get("window").width;
   const chartWidth = screenWidth - 64;
   const chartHeight = 150;
   const paddingTop = 8;
@@ -127,7 +129,7 @@ export function SpendingComparison({ data }: { data: SpendingData }) {
       ? parseFloat(data.previous_month)
       : data.previous_month;
 
-  const diff = data.difference
+  const diff = data.difference != null
     ? typeof data.difference === "string"
       ? parseFloat(data.difference)
       : data.difference
@@ -138,9 +140,11 @@ export function SpendingComparison({ data }: { data: SpendingData }) {
   const [view, setView] = useState("monthly");
   const [chartData, setChartData] = useState<SpendingPoint[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [chartError, setChartError] = useState(false);
 
   const fetchHistory = useCallback(async (v: string) => {
     setIsLoading(true);
+    setChartError(false);
     try {
       const isYearly = v === "yearly";
       const months = v === "monthly-12" ? 12 : v === "yearly" ? 60 : 6;
@@ -150,6 +154,7 @@ export function SpendingComparison({ data }: { data: SpendingData }) {
       setChartData(result.points);
     } catch {
       setChartData([]);
+      setChartError(true);
     } finally {
       setIsLoading(false);
     }
@@ -220,7 +225,14 @@ export function SpendingComparison({ data }: { data: SpendingData }) {
           <ActivityIndicator size="small" color={theme.colors.primary} />
         </View>
       )}
-      {!isLoading && chartData.length > 0 && (
+      {!isLoading && chartError && (
+        <View style={styles.loadingContainer}>
+          <Text style={{ color: theme.colors.textSecondary, fontSize: 13 }}>
+            Could not load chart
+          </Text>
+        </View>
+      )}
+      {!isLoading && !chartError && chartData.length > 0 && (
         <SpendingBarChart data={chartData} theme={theme} />
       )}
     </View>
