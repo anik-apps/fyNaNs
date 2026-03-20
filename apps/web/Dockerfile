@@ -6,8 +6,8 @@ WORKDIR /app
 # Install pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
-# Copy workspace root files
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+# Copy workspace root files + .npmrc for hoisted node_modules
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc* ./
 COPY apps/web/package.json ./apps/web/
 COPY packages/api-client/package.json ./packages/api-client/
 COPY packages/shared-types/package.json ./packages/shared-types/
@@ -57,6 +57,8 @@ RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 COPY --from=builder /app/apps/web/.next/standalone ./
 COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
 COPY --from=builder /app/apps/web/public ./apps/web/public
+# pnpm standalone doesn't bundle node_modules properly — copy from builder
+COPY --from=builder /app/node_modules ./node_modules
 
 USER nextjs
 
@@ -68,4 +70,4 @@ ENV HOSTNAME="0.0.0.0"
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
 
-CMD ["node", "apps/web/server.js"]
+CMD ["node", "server.js"]
