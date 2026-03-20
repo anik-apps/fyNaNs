@@ -5,6 +5,8 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  ScrollView,
+  Text,
 } from "react-native";
 import { SlidersHorizontal } from "lucide-react-native";
 import { TransactionList } from "@/src/components/transactions/TransactionList";
@@ -16,6 +18,20 @@ import { EmptyState } from "@/src/components/shared/EmptyState";
 import { ErrorView } from "@/src/components/shared/ErrorView";
 import { apiFetch } from "@/src/lib/api-client";
 import { useTheme } from "@/src/providers/ThemeProvider";
+
+function getDateLabel(filters: FilterValues): string {
+  if (filters.dateFrom && !filters.dateTo) {
+    const days = Math.round((Date.now() - new Date(filters.dateFrom).getTime()) / 86400000);
+    if (days <= 8) return 'Last 7 days';
+    if (days <= 31) return 'Last 30 days';
+    if (days <= 91) return 'Last 3 months';
+    if (days <= 181) return 'Last 6 months';
+    if (days <= 366) return 'Last year';
+    return `Since ${filters.dateFrom}`;
+  }
+  if (filters.dateFrom && filters.dateTo) return `${filters.dateFrom} — ${filters.dateTo}`;
+  return 'Custom date';
+}
 
 export default function TransactionsScreen() {
   const { theme } = useTheme();
@@ -29,10 +45,13 @@ export default function TransactionsScreen() {
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState<FilterValues>({
     search: "",
-    category: "",
+    categoryId: "",
+    categoryName: "",
     dateFrom: "",
     dateTo: "",
   });
+
+  const activeFilterCount = [filters.categoryId, filters.dateFrom, filters.search].filter(Boolean).length;
 
   const fetchTransactions = useCallback(
     async (cursor?: string | null) => {
@@ -41,7 +60,7 @@ export default function TransactionsScreen() {
         params.set("limit", "50");
         if (cursor) params.set("cursor", cursor);
         if (filters.search) params.set("search", filters.search);
-        if (filters.category) params.set("category", filters.category);
+        if (filters.categoryId) params.set("category_id", filters.categoryId);
         if (filters.dateFrom) params.set("date_from", filters.dateFrom);
         if (filters.dateTo) params.set("date_to", filters.dateTo);
 
@@ -134,12 +153,62 @@ export default function TransactionsScreen() {
           returnKeyType="search"
         />
         <TouchableOpacity
-          style={[styles.filterBtn, { borderColor: theme.colors.border }]}
+          style={[
+            styles.filterBtn,
+            activeFilterCount > 0
+              ? { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary + '10' }
+              : { borderColor: theme.colors.border },
+          ]}
           onPress={() => setShowFilters(true)}
         >
-          <SlidersHorizontal color={theme.colors.textSecondary} size={20} />
+          <SlidersHorizontal
+            color={activeFilterCount > 0 ? theme.colors.primary : theme.colors.textSecondary}
+            size={20}
+          />
+          {activeFilterCount > 0 && (
+            <View style={styles.filterBadge}>
+              <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
+            </View>
+          )}
         </TouchableOpacity>
       </View>
+
+      {activeFilterCount > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.chipRow}
+          contentContainerStyle={styles.chipRowContent}
+        >
+          {filters.categoryName && (
+            <TouchableOpacity
+              style={styles.chip}
+              onPress={() => setFilters(f => ({ ...f, categoryId: '', categoryName: '' }))}
+            >
+              <Text style={styles.chipText}>{filters.categoryName}</Text>
+              <Text style={styles.chipClose}>×</Text>
+            </TouchableOpacity>
+          )}
+          {filters.dateFrom && (
+            <TouchableOpacity
+              style={styles.chip}
+              onPress={() => setFilters(f => ({ ...f, dateFrom: '', dateTo: '' }))}
+            >
+              <Text style={styles.chipText}>{getDateLabel(filters)}</Text>
+              <Text style={styles.chipClose}>×</Text>
+            </TouchableOpacity>
+          )}
+          {filters.search && (
+            <TouchableOpacity
+              style={styles.chip}
+              onPress={() => { setFilters(f => ({ ...f, search: '' })); setSearch(''); }}
+            >
+              <Text style={styles.chipText}>"{filters.search}"</Text>
+              <Text style={styles.chipClose}>×</Text>
+            </TouchableOpacity>
+          )}
+        </ScrollView>
+      )}
 
       <TransactionList
         transactions={transactions}
@@ -188,5 +257,48 @@ const styles = StyleSheet.create({
     padding: 10,
     justifyContent: "center",
     alignItems: "center",
+  },
+  filterBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#ef4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  chipRow: {
+    paddingHorizontal: 12,
+    paddingBottom: 8,
+  },
+  chipRowContent: {
+    gap: 6,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    borderRadius: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  chipText: {
+    fontSize: 12,
+    color: '#3b82f6',
+    fontWeight: '500',
+  },
+  chipClose: {
+    fontSize: 14,
+    color: '#93c5fd',
   },
 });
