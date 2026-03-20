@@ -187,6 +187,34 @@ Daily automated backups via `pg_dump` to OCI Object Storage with 7 daily + 4 wee
 
 For full deployment instructions, see [docs/oci-setup.md](docs/oci-setup.md).
 
+### GitHub Secrets Required
+
+All secrets are managed in GitHub → Settings → Secrets and variables → Actions.
+
+| Secret | Description | How to generate |
+|--------|-------------|-----------------|
+| `OCI_HOST` | VM public IP address | From OCI console |
+| `OCI_USER` | SSH username | `ubuntu` for Ubuntu VMs |
+| `OCI_SSH_KEY` | Dedicated deploy SSH private key | `ssh-keygen -t ed25519 -C "deploy@fynans"` |
+| `DB_PASSWORD` | PostgreSQL password | `openssl rand -hex 32` |
+| `JWT_SECRET_KEY` | JWT signing secret | `openssl rand -hex 32` |
+| `ENCRYPTION_MASTER_SECRET` | AES encryption key for Plaid tokens | `openssl rand -hex 32` |
+| `DOMAIN` | Production domain | e.g., `fynans.kumaranik.com` |
+| `PLAID_CLIENT_ID` | Plaid API client ID | From [Plaid dashboard](https://dashboard.plaid.com) |
+| `PLAID_SECRET` | Plaid API secret | From Plaid dashboard |
+| `PLAID_ENV` | Plaid environment | `sandbox`, `development`, or `production` |
+| `RESEND_API_KEY` | Email service API key | From [Resend](https://resend.com) (optional) |
+
+### How Deployment Works
+
+```
+Push to main → CI builds ARM64 Docker images → Pushes to GHCR →
+SSHs into VM → Generates .env from secrets → Pulls images →
+SCPs config files → docker compose up → Health check
+```
+
+Nothing persists on the VM except Docker volumes (database data). All config and secrets are delivered fresh on each deploy.
+
 ## License
 
 TBD

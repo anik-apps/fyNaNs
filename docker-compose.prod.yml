@@ -22,9 +22,7 @@ services:
           memory: 4G
 
   api:
-    build:
-      context: ./apps/api
-      dockerfile: Dockerfile
+    image: ${API_IMAGE:-ghcr.io/anik-apps/fynans-api:latest}
     restart: unless-stopped
     depends_on:
       db:
@@ -63,9 +61,7 @@ services:
           memory: 2G
 
   web:
-    build:
-      context: .
-      dockerfile: apps/web/Dockerfile
+    image: ${WEB_IMAGE:-ghcr.io/anik-apps/fynans-web:latest}
     restart: unless-stopped
     depends_on:
       api:

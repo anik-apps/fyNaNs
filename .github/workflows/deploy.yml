@@ -1,0 +1,155 @@
+name: Build & Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/fynans
+
+jobs:
+  build-push:
+    name: Build & Push Images
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set up QEMU (ARM cross-compilation)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/arm64
+
+      - name: Build & push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./apps/api
+          file: ./apps/api/Dockerfile
+          push: true
+          platforms: linux/arm64
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-api:latest
+            ${{ env.IMAGE_PREFIX }}-api:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push Web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./apps/web/Dockerfile
+          push: true
+          platforms: linux/arm64
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-web:latest
+            ${{ env.IMAGE_PREFIX }}-web:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to OCI
+    needs: build-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            docker-compose.prod.yml
+            Caddyfile
+
+      - name: Copy config files to VM
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.OCI_HOST }}
+          username: ${{ secrets.OCI_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          source: "docker-compose.prod.yml,Caddyfile"
+          target: /opt/fynans
+          overwrite: true
+
+      - name: Deploy
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.OCI_HOST }}
+          username: ${{ secrets.OCI_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          port: 22
+          script_stop: true
+          script: |
+            set -e
+            cd /opt/fynans
+
+            echo "=== Generating .env.production from secrets ==="
+            cat > .env.production << 'ENVEOF'
+            POSTGRES_USER=fynans
+            POSTGRES_PASSWORD=${{ secrets.DB_PASSWORD }}
+            POSTGRES_DB=fynans
+            DATABASE_URL=postgresql+asyncpg://fynans:${{ secrets.DB_PASSWORD }}@db:5432/fynans
+            JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}
+            JWT_ALGORITHM=HS256
+            ACCESS_TOKEN_EXPIRE_MINUTES=15
+            REFRESH_TOKEN_EXPIRE_DAYS=30
+            ENCRYPTION_MASTER_SECRET=${{ secrets.ENCRYPTION_MASTER_SECRET }}
+            COOKIE_SECURE=true
+            COOKIE_SAMESITE=strict
+            CORS_ORIGINS=https://${{ secrets.DOMAIN }}
+            PLAID_CLIENT_ID=${{ secrets.PLAID_CLIENT_ID }}
+            PLAID_SECRET=${{ secrets.PLAID_SECRET }}
+            PLAID_ENV=${{ secrets.PLAID_ENV || 'sandbox' }}
+            PLAID_WEBHOOK_URL=https://${{ secrets.DOMAIN }}/api/plaid/webhook
+            APP_URL=https://${{ secrets.DOMAIN }}
+            API_URL=https://${{ secrets.DOMAIN }}
+            RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
+            LOGIN_RATE_LIMIT=5
+            GENERAL_RATE_LIMIT=100
+            API_IMAGE=ghcr.io/${{ github.repository_owner }}/fynans-api:${{ github.sha }}
+            WEB_IMAGE=ghcr.io/${{ github.repository_owner }}/fynans-web:${{ github.sha }}
+            DOMAIN=${{ secrets.DOMAIN }}
+            ENVEOF
+
+            echo "=== Logging in to GHCR ==="
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            echo "=== Pulling images ==="
+            docker pull ghcr.io/${{ github.repository_owner }}/fynans-api:${{ github.sha }}
+            docker pull ghcr.io/${{ github.repository_owner }}/fynans-web:${{ github.sha }}
+
+            echo "=== Starting services ==="
+            docker compose -f docker-compose.prod.yml --env-file .env.production up -d
+
+            echo "=== Waiting for health check ==="
+            for i in $(seq 1 30); do
+              if curl -sf http://localhost:8000/api/health > /dev/null 2>&1; then
+                echo "API healthy!"
+                break
+              fi
+              echo "Waiting... ($i/30)"
+              sleep 2
+            done
+
+            curl -f http://localhost:8000/api/health || echo "WARNING: Health check failed"
+
+            echo "=== Cleanup ==="
+            docker image prune -f
+
+            echo "=== Deployment complete ==="
+            docker compose -f docker-compose.prod.yml ps
