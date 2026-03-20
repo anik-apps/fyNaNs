@@ -1,0 +1,193 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  DATABASE_URL: postgresql+asyncpg://fynans:fynans_ci@localhost:5432/fynans_ci
+  JWT_SECRET_KEY: ci-test-secret-key-not-for-production
+  ENCRYPTION_MASTER_SECRET: ci-test-encryption-secret-not-for-production
+  LOGIN_RATE_LIMIT: 100
+  GENERAL_RATE_LIMIT: 1000
+
+jobs:
+  lint:
+    name: Lint & Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install Python dependencies
+        working-directory: apps/api
+        run: poetry install --no-interaction
+
+      - name: Ruff lint
+        working-directory: apps/api
+        run: poetry run ruff check src/ tests/
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeScript check
+        working-directory: apps/web
+        run: pnpm exec tsc --noEmit
+
+      - name: Next.js build
+        working-directory: apps/web
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8888
+        run: pnpm build
+
+  test-unit:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: fynans
+          POSTGRES_PASSWORD: fynans_ci
+          POSTGRES_DB: fynans_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        working-directory: apps/api
+        run: poetry install --no-interaction
+
+      - name: Run unit tests
+        working-directory: apps/api
+        run: poetry run pytest tests/ -v --tb=short -k "not integration" --junitxml=junit-results.xml
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: apps/api/junit-results.xml
+
+  test-integration:
+    name: Integration + E2E Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: fynans
+          POSTGRES_PASSWORD: fynans_ci
+          POSTGRES_DB: fynans_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install Python dependencies
+        working-directory: apps/api
+        run: poetry install --no-interaction
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        working-directory: apps/web
+        run: pnpm exec playwright install chromium --with-deps
+
+      - name: Run Alembic migrations
+        working-directory: apps/api
+        run: poetry run alembic upgrade head
+
+      - name: Seed categories
+        working-directory: apps/api
+        run: poetry run python ../../scripts/seed-categories.py
+
+      - name: Start API server
+        working-directory: apps/api
+        run: |
+          poetry run uvicorn src.main:app --host 0.0.0.0 --port 8888 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8888/api/health && break
+            sleep 1
+          done
+          curl -f http://localhost:8888/api/health || exit 1
+
+      - name: Run API integration tests
+        working-directory: apps/api
+        run: poetry run pytest tests/integration/ -v --tb=short --junitxml=junit-integration-results.xml
+        env:
+          API_BASE_URL: http://localhost:8888/api
+
+      - name: Run Playwright E2E tests
+        working-directory: apps/web
+        run: pnpm exec playwright test e2e/real-auth-flow.spec.ts e2e/page-loading.spec.ts --reporter=list
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8888
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-e2e-results
+          path: |
+            apps/api/junit-integration-results.xml
+            apps/web/test-results/
