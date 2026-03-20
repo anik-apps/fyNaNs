@@ -13,6 +13,9 @@ env:
   LOGIN_RATE_LIMIT: 100
   GENERAL_RATE_LIMIT: 1000
 
+permissions:
+  contents: read
+
 jobs:
   lint:
     name: Lint & Build

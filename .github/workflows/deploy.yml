@@ -5,6 +5,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  packages: write
+
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/fynans
@@ -13,9 +17,6 @@ jobs:
   build-push:
     name: Build & Push Images
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
 
     steps:
       - uses: actions/checkout@v4
@@ -70,35 +71,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.OCI_HOST }}
-          username: ${{ secrets.OCI_USER }}
-          key: ${{ secrets.OCI_SSH_KEY }}
-          port: 22
-          script_stop: true
-          script: |
-            set -e
-            DEPLOY_DIR=/opt/fynans
-            IMAGE_PREFIX=ghcr.io/${{ github.repository_owner }}/fynans
-            IMAGE_TAG=${{ github.sha }}
+          sparse-checkout: |
+            docker-compose.prod.yml
+            Caddyfile
 
-            mkdir -p $DEPLOY_DIR
-            cd $DEPLOY_DIR
-
-            echo "=== Logging in to GHCR ==="
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-
-            echo "=== Pulling images ==="
-            docker pull ${IMAGE_PREFIX}-api:${IMAGE_TAG}
-            docker pull ${IMAGE_PREFIX}-web:${IMAGE_TAG}
-            docker tag ${IMAGE_PREFIX}-api:${IMAGE_TAG} ${IMAGE_PREFIX}-api:latest
-            docker tag ${IMAGE_PREFIX}-web:${IMAGE_TAG} ${IMAGE_PREFIX}-web:latest
-
-      # SCP config files from repo to VM (Caddyfile + docker-compose)
-      - name: Copy config files
+      - name: Copy config files to VM
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.OCI_HOST }}
@@ -108,7 +86,7 @@ jobs:
           target: /opt/fynans
           overwrite: true
 
-      - name: Start services
+      - name: Deploy
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.OCI_HOST }}
@@ -120,7 +98,42 @@ jobs:
             set -e
             cd /opt/fynans
 
-            echo "=== Starting/updating services ==="
+            echo "=== Generating .env.production from secrets ==="
+            cat > .env.production << 'ENVEOF'
+            POSTGRES_USER=fynans
+            POSTGRES_PASSWORD=${{ secrets.DB_PASSWORD }}
+            POSTGRES_DB=fynans
+            DATABASE_URL=postgresql+asyncpg://fynans:${{ secrets.DB_PASSWORD }}@db:5432/fynans
+            JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}
+            JWT_ALGORITHM=HS256
+            ACCESS_TOKEN_EXPIRE_MINUTES=15
+            REFRESH_TOKEN_EXPIRE_DAYS=30
+            ENCRYPTION_MASTER_SECRET=${{ secrets.ENCRYPTION_MASTER_SECRET }}
+            COOKIE_SECURE=true
+            COOKIE_SAMESITE=strict
+            CORS_ORIGINS=https://${{ secrets.DOMAIN }}
+            PLAID_CLIENT_ID=${{ secrets.PLAID_CLIENT_ID }}
+            PLAID_SECRET=${{ secrets.PLAID_SECRET }}
+            PLAID_ENV=${{ secrets.PLAID_ENV || 'sandbox' }}
+            PLAID_WEBHOOK_URL=https://${{ secrets.DOMAIN }}/api/plaid/webhook
+            APP_URL=https://${{ secrets.DOMAIN }}
+            API_URL=https://${{ secrets.DOMAIN }}
+            RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
+            LOGIN_RATE_LIMIT=5
+            GENERAL_RATE_LIMIT=100
+            API_IMAGE=ghcr.io/${{ github.repository_owner }}/fynans-api:${{ github.sha }}
+            WEB_IMAGE=ghcr.io/${{ github.repository_owner }}/fynans-web:${{ github.sha }}
+            DOMAIN=${{ secrets.DOMAIN }}
+            ENVEOF
+
+            echo "=== Logging in to GHCR ==="
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            echo "=== Pulling images ==="
+            docker pull ghcr.io/${{ github.repository_owner }}/fynans-api:${{ github.sha }}
+            docker pull ghcr.io/${{ github.repository_owner }}/fynans-web:${{ github.sha }}
+
+            echo "=== Starting services ==="
             docker compose -f docker-compose.prod.yml --env-file .env.production up -d
 
             echo "=== Waiting for health check ==="
@@ -135,7 +148,7 @@ jobs:
 
             curl -f http://localhost:8000/api/health || echo "WARNING: Health check failed"
 
-            echo "=== Cleanup old images ==="
+            echo "=== Cleanup ==="
             docker image prune -f
 
             echo "=== Deployment complete ==="
