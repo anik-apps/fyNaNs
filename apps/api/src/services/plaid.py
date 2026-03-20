@@ -35,7 +35,8 @@ class PlaidServiceError(Exception):
 def _get_plaid_client() -> plaid_api.PlaidApi:
     env_map = {
         "sandbox": plaid.Environment.Sandbox,
-        "development": plaid.Environment.Development,
+        # Our plaid-python SDK only exposes Sandbox + Production
+        "development": plaid.Environment.Sandbox,
         "production": plaid.Environment.Production,
     }
     configuration = plaid.Configuration(
@@ -127,6 +128,36 @@ async def exchange_public_token(
 
     num_linked = 0
     for plaid_acct in accounts_response.accounts:
+        # Dedup: check by plaid_account_id first (same link session retry),
+        # then by name+mask (same real account across different link sessions)
+        existing_result = await db.execute(
+            select(Account).where(
+                Account.user_id == user_id,
+                Account.plaid_account_id == plaid_acct.account_id,
+            )
+        )
+        existing_acct = existing_result.scalars().first()
+
+        if not existing_acct and plaid_acct.mask:
+            # Fallback: match by institution + name + last 4 digits
+            fallback_result = await db.execute(
+                select(Account).where(
+                    Account.user_id == user_id,
+                    Account.institution_name == institution_name,
+                    Account.name == plaid_acct.name,
+                    Account.mask == plaid_acct.mask,
+                )
+            )
+            existing_acct = fallback_result.scalars().first()
+
+        if existing_acct:
+            # Update existing account with fresh data from Plaid
+            existing_acct.balance = plaid_acct.balances.current or 0
+            existing_acct.plaid_item_id = plaid_item.id
+            existing_acct.plaid_account_id = plaid_acct.account_id
+            existing_acct.is_manual = False
+            continue
+
         # Map Plaid subtypes
         acct_type = account_type_map.get(
             plaid_acct.type.value if hasattr(plaid_acct.type, "value") else str(plaid_acct.type),
@@ -163,36 +194,153 @@ async def get_decrypted_access_token(plaid_item: PlaidItem) -> str:
 # --- Transaction Sync ---
 
 
+# Plaid personal_finance_category.primary -> our parent category name
+_PLAID_PRIMARY_MAP: dict[str, str] = {
+    "INCOME": "Income",
+    "TRANSFER_IN": "Income",
+    "TRANSFER_OUT": "Transfer",
+    "LOAN_PAYMENTS": "Transfer",
+    "BANK_FEES": "Fees & Charges",
+    "INTEREST_EARNED": "Income",
+    "ENTERTAINMENT": "Entertainment",
+    "FOOD_AND_DRINK": "Food & Drink",
+    "GENERAL_MERCHANDISE": "Shopping",
+    "HOME_IMPROVEMENT": "Housing",
+    "MEDICAL": "Health",
+    "PERSONAL_CARE": "Personal",
+    "GENERAL_SERVICES": "Personal",
+    "GOVERNMENT_AND_NON_PROFIT": "Gifts & Donations",
+    "TRANSPORTATION": "Transportation",
+    "TRAVEL": "Transportation",
+    "RENT_AND_UTILITIES": "Housing",
+    "EDUCATION": "Education",
+}
+
+# Plaid personal_finance_category.detailed -> our subcategory name
+# Falls back to primary mapping if no detailed match
+_PLAID_DETAILED_MAP: dict[str, str] = {
+    # Food & Drink subcategories
+    "FOOD_AND_DRINK_GROCERIES": "Groceries",
+    "FOOD_AND_DRINK_RESTAURANT": "Restaurants",
+    "FOOD_AND_DRINK_COFFEE": "Restaurants",
+    "FOOD_AND_DRINK_FAST_FOOD": "Restaurants",
+    "FOOD_AND_DRINK_BEER_WINE_AND_LIQUOR": "Groceries",
+    # Transportation subcategories
+    "TRANSPORTATION_GAS": "Gas",
+    "TRANSPORTATION_PUBLIC_TRANSIT": "Public Transit",
+    "TRANSPORTATION_TAXI": "Rideshare",
+    "TRANSPORTATION_PARKING": "Transportation",
+    "TRAVEL_FLIGHTS": "Transportation",
+    "TRAVEL_LODGING": "Transportation",
+    # Housing subcategories
+    "RENT_AND_UTILITIES_RENT": "Rent",
+    "RENT_AND_UTILITIES_GAS_AND_ELECTRICITY": "Utilities",
+    "RENT_AND_UTILITIES_WATER": "Utilities",
+    "RENT_AND_UTILITIES_INTERNET_AND_CABLE": "Utilities",
+    "RENT_AND_UTILITIES_TELEPHONE": "Utilities",
+    "HOME_IMPROVEMENT_FURNITURE": "Housing",
+    "HOME_IMPROVEMENT_HARDWARE": "Housing",
+    # Shopping subcategories
+    "GENERAL_MERCHANDISE_CLOTHING_AND_ACCESSORIES": "Clothing",
+    "GENERAL_MERCHANDISE_ELECTRONICS": "Electronics",
+    "GENERAL_MERCHANDISE_DEPARTMENT_STORES": "General",
+    "GENERAL_MERCHANDISE_ONLINE_MARKETPLACES": "General",
+    # Health subcategories
+    "MEDICAL_PHARMACIES_AND_SUPPLEMENTS": "Pharmacy",
+    "MEDICAL_DENTIST_AND_OPTOMETRIST": "Doctor",
+    "MEDICAL_VETERINARY_SERVICES": "Health",
+    # Entertainment subcategories
+    "ENTERTAINMENT_MUSIC_AND_AUDIO": "Streaming",
+    "ENTERTAINMENT_TV_AND_MOVIES": "Streaming",
+    "ENTERTAINMENT_VIDEO_GAMES": "Hobbies",
+    "ENTERTAINMENT_SPORTING_EVENTS_AMUSEMENT_PARKS_AND_MUSEUMS": "Events",
+    # Income subcategories
+    "INCOME_WAGES": "Salary",
+    "INCOME_DIVIDENDS": "Investments",
+    "INCOME_INTEREST_EARNED": "Investments",
+    "TRANSFER_IN_DEPOSIT": "Other Income",
+    # Personal
+    "PERSONAL_CARE_GYMS_AND_FITNESS_CENTERS": "Fitness",
+}
+
+# Keep backward compatibility alias
+_PLAID_CATEGORY_MAP = _PLAID_PRIMARY_MAP
+
+
 async def _resolve_category_id(
-    db: AsyncSession, plaid_category_primary: str | None
+    db: AsyncSession,
+    plaid_category_primary: str | None,
+    plaid_category_detailed: str | None = None,
 ) -> uuid.UUID | None:
-    """Map Plaid personal_finance_category to our Category by plaid_category column.
+    """Map Plaid personal_finance_category to our Category.
 
-    The Category model has a `plaid_category` field that stores the Plaid primary
-    category string (e.g., "FOOD_AND_DRINK"). We match directly on that column.
-    Falls back to 'Uncategorized' if no match found.
+    Resolution order:
+    1. Try detailed category → subcategory (e.g., FOOD_AND_DRINK_GROCERIES → Groceries)
+    2. Try primary category → parent (e.g., FOOD_AND_DRINK → Food & Drink)
+    3. Try direct plaid_category column match (legacy)
+    4. Fallback to Uncategorized
     """
-    if plaid_category_primary:
-        from src.models.category import Category
+    from src.models.category import Category
 
-        # Direct match on the plaid_category column
+    # 1. Try detailed → subcategory
+    if plaid_category_detailed:
+        detailed_key = plaid_category_detailed.upper()
+        our_sub_name = _PLAID_DETAILED_MAP.get(detailed_key)
+        if our_sub_name and plaid_category_primary:
+            # Resolve parent category first to disambiguate subcategories
+            parent_name = _PLAID_PRIMARY_MAP.get(plaid_category_primary.upper())
+            if parent_name:
+                parent_result = await db.execute(
+                    select(Category).where(
+                        Category.is_system.is_(True),
+                        Category.name == parent_name,
+                        Category.parent_id.is_(None),
+                    )
+                )
+                parent_cat = parent_result.scalars().first()
+                if parent_cat:
+                    result = await db.execute(
+                        select(Category).where(
+                            Category.is_system.is_(True),
+                            Category.name == our_sub_name,
+                            Category.parent_id == parent_cat.id,
+                        )
+                    )
+                    cat = result.scalars().first()
+                    if cat:
+                        return cat.id
+
+    # 2. Try primary → parent category
+    if plaid_category_primary:
+        our_category_name = _PLAID_PRIMARY_MAP.get(plaid_category_primary.upper())
+        if our_category_name:
+            result = await db.execute(
+                select(Category).where(
+                    Category.is_system.is_(True),
+                    Category.name == our_category_name,
+                    Category.parent_id.is_(None),
+                )
+            )
+            cat = result.scalars().first()
+            if cat:
+                return cat.id
+
+        # 3. Legacy: direct plaid_category column match
         result = await db.execute(
             select(Category).where(
                 Category.is_system.is_(True),
                 Category.plaid_category == plaid_category_primary,
             )
         )
-        cat = result.scalar_one_or_none()
+        cat = result.scalars().first()
         if cat:
             return cat.id
 
     # Fallback to Uncategorized
-    from src.models.category import Category
-
     result = await db.execute(
         select(Category).where(Category.name == "Uncategorized", Category.is_system.is_(True))
     )
-    uncat = result.scalar_one_or_none()
+    uncat = result.scalars().first()
     return uncat.id if uncat else None
 
 
@@ -240,10 +388,12 @@ async def sync_transactions(
                 continue
 
             plaid_primary = None
+            plaid_detailed = None
             if hasattr(txn, "personal_finance_category") and txn.personal_finance_category:
                 plaid_primary = txn.personal_finance_category.primary
+                plaid_detailed = getattr(txn.personal_finance_category, "detailed", None)
 
-            category_id = await _resolve_category_id(db, plaid_primary)
+            category_id = await _resolve_category_id(db, plaid_primary, plaid_detailed)
 
             # Parse date
             txn_date = txn.date
@@ -252,7 +402,10 @@ async def sync_transactions(
 
             # Upsert: check if plaid_txn_id already exists
             existing = await db.execute(
-                select(Transaction).where(Transaction.plaid_txn_id == txn.transaction_id)
+                select(Transaction).where(
+                    Transaction.plaid_txn_id == txn.transaction_id,
+                    Transaction.user_id == plaid_item.user_id,
+                )
             )
             if existing.scalar_one_or_none():
                 continue  # Already exists, skip (will be handled by modified)
@@ -275,7 +428,10 @@ async def sync_transactions(
         # Process modified transactions
         for txn in response.modified:
             result = await db.execute(
-                select(Transaction).where(Transaction.plaid_txn_id == txn.transaction_id)
+                select(Transaction).where(
+                    Transaction.plaid_txn_id == txn.transaction_id,
+                    Transaction.user_id == plaid_item.user_id,
+                )
             )
             existing_txn = result.scalar_one_or_none()
             if existing_txn:
@@ -290,9 +446,13 @@ async def sync_transactions(
 
                 # Re-resolve category on modification
                 plaid_primary = None
+                plaid_detailed = None
                 if hasattr(txn, "personal_finance_category") and txn.personal_finance_category:
                     plaid_primary = txn.personal_finance_category.primary
-                existing_txn.category_id = await _resolve_category_id(db, plaid_primary)
+                    plaid_detailed = getattr(txn.personal_finance_category, "detailed", None)
+                existing_txn.category_id = await _resolve_category_id(
+                    db, plaid_primary, plaid_detailed
+                )
 
                 modified_count += 1
 
@@ -300,7 +460,8 @@ async def sync_transactions(
         for removed_txn in response.removed:
             result = await db.execute(
                 select(Transaction).where(
-                    Transaction.plaid_txn_id == removed_txn.transaction_id
+                    Transaction.plaid_txn_id == removed_txn.transaction_id,
+                    Transaction.user_id == plaid_item.user_id,
                 )
             )
             existing_txn = result.scalar_one_or_none()

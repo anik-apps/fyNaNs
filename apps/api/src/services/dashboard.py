@@ -115,7 +115,13 @@ async def _get_recent_transactions(
 ) -> list[RecentTransaction]:
     """Get last N transactions with category info."""
     result = await db.execute(
-        select(Transaction, Category.name, Category.color, Account.name.label("account_name"))
+        select(
+            Transaction,
+            Category.name,
+            Category.color,
+            Account.name.label("account_name"),
+            Account.type.label("account_type"),
+        )
         .outerjoin(Category, Transaction.category_id == Category.id)
         .join(Account, Transaction.account_id == Account.id)
         .where(Transaction.user_id == user_id)
@@ -134,9 +140,10 @@ async def _get_recent_transactions(
             category_name=cat_name or "Uncategorized",
             category_color=cat_color or "#6B7280",
             account_name=acct_name,
+            account_type=acct_type or "checking",
             is_pending=txn.is_pending,
         )
-        for txn, cat_name, cat_color, acct_name in rows
+        for txn, cat_name, cat_color, acct_name, acct_type in rows
     ]
 
 

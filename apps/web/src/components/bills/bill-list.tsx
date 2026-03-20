@@ -3,7 +3,11 @@
 import { useEffect, useState } from "react";
 import { BillCard } from "./bill-card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api-client";
+import { Receipt } from "lucide-react";
+import Link from "next/link";
+import { ROUTES } from "@/lib/constants";
 
 interface Bill {
   id: string;
@@ -47,10 +51,14 @@ export function BillList() {
   if (bills.length === 0) {
     return (
       <div className="text-center py-12 text-muted-foreground">
+        <Receipt className="mx-auto h-10 w-10 mb-3 opacity-50" />
         <p className="text-lg font-medium">No bills yet</p>
         <p className="text-sm mt-1">
           Add your recurring bills to stay on top of payments.
         </p>
+        <Button asChild variant="outline" className="mt-4">
+          <Link href={ROUTES.BILLS}>Add a bill</Link>
+        </Button>
       </div>
     );
   }

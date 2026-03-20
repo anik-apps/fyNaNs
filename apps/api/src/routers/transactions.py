@@ -33,7 +33,13 @@ MAX_IMPORT_SIZE = 5 * 1024 * 1024  # 5MB
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
 
-def _txn_to_response(txn: Transaction) -> TransactionResponse:
+def _txn_to_response(
+    txn: Transaction,
+    category_name: str | None = None,
+    category_color: str | None = None,
+    account_name: str | None = None,
+    account_type: str | None = None,
+) -> TransactionResponse:
     return TransactionResponse(
         id=txn.id,
         account_id=txn.account_id,
@@ -42,6 +48,10 @@ def _txn_to_response(txn: Transaction) -> TransactionResponse:
         description=txn.description,
         merchant_name=txn.merchant_name,
         category_id=txn.category_id,
+        category_name=category_name or "Uncategorized",
+        category_color=category_color or "#6B7280",
+        account_name=account_name or "Unknown",
+        account_type=account_type or "checking",
         is_pending=txn.is_pending,
         is_manual=txn.is_manual,
         notes=txn.notes,
@@ -72,10 +82,43 @@ async def list_transactions_endpoint(
         date_to=date_to,
         search=search,
     )
-    return TransactionListResponse(
-        items=[_txn_to_response(t) for t in transactions],
-        next_cursor=next_cursor,
-    )
+
+    # Enrich with account and category names
+    from src.models.account import Account
+    from src.models.category import Category
+
+    account_ids = {t.account_id for t in transactions}
+    category_ids = {t.category_id for t in transactions if t.category_id}
+
+    acct_map: dict = {}
+    if account_ids:
+        acct_result = await db.execute(
+            select(Account.id, Account.name, Account.type).where(Account.id.in_(account_ids))
+        )
+        acct_map = {row[0]: (row[1], row[2]) for row in acct_result.all()}
+
+    cat_map: dict = {}
+    if category_ids:
+        cat_result = await db.execute(
+            select(Category.id, Category.name, Category.color).where(
+                Category.id.in_(category_ids)
+            )
+        )
+        cat_map = {row[0]: (row[1], row[2]) for row in cat_result.all()}
+
+    items = []
+    for t in transactions:
+        cat_name, cat_color = cat_map.get(t.category_id, ("Uncategorized", "#6B7280"))
+        acct_name, acct_type = acct_map.get(t.account_id, ("Unknown", "checking"))
+        items.append(_txn_to_response(
+            t,
+            category_name=cat_name,
+            category_color=cat_color,
+            account_name=acct_name,
+            account_type=acct_type,
+        ))
+
+    return TransactionListResponse(items=items, next_cursor=next_cursor)
 
 
 @router.get("/summary", response_model=TransactionSummaryResponse)

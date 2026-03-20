@@ -36,6 +36,7 @@ class RecentTransaction(BaseModel):
     category_name: str
     category_color: str
     account_name: str
+    account_type: str
     is_pending: bool
 
 

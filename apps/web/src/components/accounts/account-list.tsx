@@ -3,7 +3,11 @@
 import { useEffect, useState } from "react";
 import { AccountCard } from "./account-card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api-client";
+import { Wallet } from "lucide-react";
+import Link from "next/link";
+import { ROUTES } from "@/lib/constants";
 
 interface Account {
   id: string;
@@ -65,8 +69,12 @@ export function AccountList() {
   if (Object.keys(grouped).length === 0) {
     return (
       <div className="text-center py-12 text-muted-foreground">
+        <Wallet className="mx-auto h-10 w-10 mb-3 opacity-50" />
         <p className="text-lg font-medium">No accounts yet</p>
         <p className="text-sm mt-1">Link a bank or add a manual account to get started.</p>
+        <Button asChild variant="outline" className="mt-4">
+          <Link href={ROUTES.ACCOUNTS}>Add an account</Link>
+        </Button>
       </div>
     );
   }

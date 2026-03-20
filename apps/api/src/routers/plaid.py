@@ -1,7 +1,8 @@
+import asyncio
 import json
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,7 +34,10 @@ async def create_link(user: User = Depends(get_current_user)):
         result = await create_link_token(user.id)
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create link token: {e}") from e
+        import logging
+
+        logging.getLogger(__name__).error("Failed to create link token: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to create link token") from e
 
 
 @router.post("/exchange-token", response_model=ExchangeTokenResponse)
@@ -106,15 +110,88 @@ async def list_plaid_items(
     return response
 
 
+@router.post("/items/{item_id}/sync")
+async def sync_plaid_item(
+    item_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Manually trigger a transaction sync for a linked Plaid item."""
+    import uuid as uuid_mod
+
+    from src.services.plaid import has_credit_accounts, sync_liabilities, sync_transactions
+
+    result = await db.execute(
+        select(PlaidItem).where(
+            PlaidItem.id == uuid_mod.UUID(item_id),
+            PlaidItem.user_id == user.id,
+        )
+    )
+    plaid_item = result.scalar_one_or_none()
+    if not plaid_item:
+        raise HTTPException(status_code=404, detail="Plaid item not found")
+
+    if plaid_item.status != "active":
+        raise HTTPException(status_code=400, detail="Item is not active")
+
+    sync_result = await sync_transactions(db, plaid_item)
+
+    if await has_credit_accounts(db, plaid_item):
+        await sync_liabilities(db, plaid_item)
+
+    return {
+        "added": sync_result["added"],
+        "modified": sync_result["modified"],
+        "removed": sync_result["removed"],
+    }
+
+
+@router.post("/sync-all")
+async def sync_all_items(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Sync all active Plaid items for the current user."""
+    from src.services.plaid import has_credit_accounts, sync_liabilities, sync_transactions
+
+    result = await db.execute(
+        select(PlaidItem).where(
+            PlaidItem.user_id == user.id,
+            PlaidItem.status == "active",
+        )
+    )
+    items = result.scalars().all()
+
+    total = {"added": 0, "modified": 0, "removed": 0, "items_synced": 0}
+    for item in items:
+        try:
+            sync_result = await sync_transactions(db, item)
+            total["added"] += sync_result["added"]
+            total["modified"] += sync_result["modified"]
+            total["removed"] += sync_result["removed"]
+            total["items_synced"] += 1
+
+            if await has_credit_accounts(db, item):
+                await sync_liabilities(db, item)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("Sync failed for item %s: %s", item.id, e)
+            continue
+
+    return total
+
+
 @router.delete("/items/{item_id}")
 async def delete_plaid_item(
     item_id: uuid.UUID,
+    delete_accounts: bool = Query(False, description="Also delete all accounts and transactions"),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Revoke Plaid access token and remove PlaidItem.
 
-    Associated accounts are converted to manual (preserving transaction history).
+    By default, associated accounts are converted to manual (preserving transaction history).
+    Set delete_accounts=true to also delete all accounts and their transactions.
     """
     result = await db.execute(
         select(PlaidItem).where(PlaidItem.id == item_id, PlaidItem.user_id == user.id)
@@ -131,20 +208,29 @@ async def delete_plaid_item(
 
         access_token = await get_decrypted_access_token(plaid_item)
         client = _get_plaid_client()
-        client.item_remove(ItemRemoveRequest(access_token=access_token))
+        await asyncio.to_thread(client.item_remove, ItemRemoveRequest(access_token=access_token))
     except Exception:
         pass  # Log but proceed -- orphaned tokens expire naturally
 
-    # Convert associated accounts to manual
     accounts_result = await db.execute(
         select(Account).where(Account.plaid_item_id == plaid_item.id)
     )
-    for account in accounts_result.scalars().all():
-        account.is_manual = True
-        account.plaid_item_id = None
-        account.plaid_account_id = None
+    accounts = accounts_result.scalars().all()
+    num_accounts = len(accounts)
+
+    if delete_accounts:
+        # Delete accounts and their transactions (cascade)
+        for account in accounts:
+            await db.delete(account)
+    else:
+        # Convert accounts to manual (preserve transaction history)
+        for account in accounts:
+            account.is_manual = True
+            account.plaid_item_id = None
+            account.plaid_account_id = None
 
     await db.delete(plaid_item)
     await db.commit()
 
-    return {"detail": "Plaid item removed, accounts converted to manual"}
+    action = "deleted" if delete_accounts else "converted to manual"
+    return {"detail": f"Bank unlinked, {num_accounts} accounts {action}"}

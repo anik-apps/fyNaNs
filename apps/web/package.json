@@ -3,7 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --turbo",
+    "dev:webpack": "next dev",
+    "dev:clean": "rm -rf .next && next dev --turbo",
+    "dev:watch": "./dev-watch.sh",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

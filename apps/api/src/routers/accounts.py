@@ -68,6 +68,21 @@ async def create_account(
         raise HTTPException(status_code=e.status_code, detail=e.message) from e
 
 
+@router.get("/{account_id}", response_model=AccountResponse)
+async def get_account_endpoint(
+    account_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Account).where(Account.id == account_id, Account.user_id == user.id)
+    )
+    account = result.scalar_one_or_none()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return _account_to_response(account)
+
+
 @router.put("/{account_id}", response_model=AccountResponse)
 async def update_account_endpoint(
     account_id: uuid.UUID,
