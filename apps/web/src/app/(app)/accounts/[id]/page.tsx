@@ -1,15 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useEffect, useState, useCallback } from "react";
+import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency, formatRelativeDate, cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/api-client";
 import { TransactionRow } from "@/components/transactions/transaction-row";
 import {
-  Building2, CreditCard, Landmark, PiggyBank, TrendingUp, Wallet,
+  Building2, CreditCard, Landmark, PiggyBank, Trash2, TrendingUp, Wallet,
 } from "lucide-react";
 
 interface AccountDetail {
@@ -18,6 +19,8 @@ interface AccountDetail {
   type: string;
   balance: string;
   institution_name: string;
+  is_manual: boolean;
+  plaid_item_id: string | null;
   last_synced: string | null;
   currency: string;
 }
@@ -45,10 +48,12 @@ const TYPE_CONFIG: Record<string, { label: string; icon: typeof Wallet; color: s
 
 export default function AccountDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const accountId = params.id as string;
   const [account, setAccount] = useState<AccountDetail | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
@@ -70,6 +75,36 @@ export default function AccountDetailPage() {
     fetchData();
   }, [accountId]);
 
+  const handleDeleteAccount = useCallback(async () => {
+    if (!account) return;
+    const msg = account.is_manual
+      ? `Delete "${account.name}" and all its transactions?`
+      : `Delete "${account.name}"? This will remove all transactions for this account. The bank link will remain (other accounts from ${account.institution_name} won't be affected).`;
+
+    if (!confirm(msg)) return;
+
+    setIsDeleting(true);
+    try {
+      await apiFetch(`/api/accounts/${accountId}`, { method: "DELETE" });
+      router.push("/accounts");
+    } catch {
+      setIsDeleting(false);
+    }
+  }, [account, accountId, router]);
+
+  const handleUnlinkBank = useCallback(async () => {
+    if (!account?.plaid_item_id) return;
+    if (!confirm(`Unlink ${account.institution_name}? All accounts from this bank will be converted to manual accounts. Transaction history will be kept.`)) return;
+
+    setIsDeleting(true);
+    try {
+      await apiFetch(`/api/plaid/items/${account.plaid_item_id}`, { method: "DELETE" });
+      router.push("/accounts");
+    } catch {
+      setIsDeleting(false);
+    }
+  }, [account, router]);
+
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -90,7 +125,30 @@ export default function AccountDetailPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold">{account.name}</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">{account.name}</h1>
+        <div className="flex gap-2">
+          {!account.is_manual && account.plaid_item_id && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleUnlinkBank}
+              disabled={isDeleting}
+            >
+              Unlink Bank
+            </Button>
+          )}
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={handleDeleteAccount}
+            disabled={isDeleting}
+          >
+            <Trash2 className="w-4 h-4 mr-1.5" />
+            {isDeleting ? "Deleting..." : "Delete"}
+          </Button>
+        </div>
+      </div>
 
       <Card>
         <CardHeader className="pb-2">
@@ -102,9 +160,14 @@ export default function AccountDetailPage() {
               <CardTitle className="text-sm font-medium text-muted-foreground">
                 {account.institution_name}
               </CardTitle>
-              <Badge variant="secondary" className="mt-0.5">
-                {config.label}
-              </Badge>
+              <div className="flex items-center gap-2 mt-0.5">
+                <Badge variant="secondary">
+                  {config.label}
+                </Badge>
+                {account.is_manual && (
+                  <Badge variant="outline" className="text-[10px]">Manual</Badge>
+                )}
+              </div>
             </div>
           </div>
         </CardHeader>
