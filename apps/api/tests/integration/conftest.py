@@ -56,7 +56,8 @@ def test_user(client, unique_suffix):
         "name": name,
     })
     assert resp.status_code == 201, f"Registration failed: {resp.text}"
-    user_data = resp.json()
+    reg_data = resp.json()
+    user_data = reg_data["user"]
 
     # Login to get tokens
     login_resp = client.post("/auth/login", json={

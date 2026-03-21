@@ -35,7 +35,9 @@ def test_register_login_flow(client: httpx.Client):
         "name": "Auth Flow User",
     })
     assert resp.status_code == 201
-    user = resp.json()
+    data = resp.json()
+    assert "access_token" in data
+    user = data["user"]
     assert user["email"] == email
 
     # Login
@@ -181,7 +183,7 @@ def test_mfa_setup_confirm_login_flow(client: httpx.Client):
     })
     assert login2.status_code == 200
     assert login2.json()["mfa_required"] is True
-    mfa_token = login2.json()["access_token"]
+    mfa_token = login2.json()["mfa_token"]
 
     # The server allows same TOTP code within its validity window (valid_window=1,
     # meaning current + previous + next 30s window). No need to wait for a new code.

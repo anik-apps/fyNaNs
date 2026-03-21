@@ -92,7 +92,21 @@ fyNaNs/
 │   │   ├── tests/                    # 156 pytest tests + 43 integration tests
 │   │   │   └── factories.py         # Test data factories for dashboard-related models
 │   ├── web/                          # Next.js frontend — coming in Plan 5
-│   └── mobile/                       # React Native (Expo) — coming in Plan 6
+│   └── mobile/                       # React Native (Expo) mobile app
+│       ├── app/                      # Expo Router file-based navigation
+│       │   ├── (auth)/               # Auth stack (login, register, MFA, forgot-password)
+│       │   └── (tabs)/               # Bottom tab navigator
+│       │       ├── index.tsx          # Dashboard screen
+│       │       ├── accounts/          # Account list + detail
+│       │       ├── transactions.tsx   # Transactions with search, filters, infinite scroll
+│       │       ├── budgets.tsx        # Budget cards with progress bars
+│       │       ├── bills.tsx          # Bills with status indicators
+│       │       └── settings/          # Profile, security, notifications
+│       └── src/
+│           ├── components/            # Reusable UI components per feature
+│           ├── hooks/                 # useAuth, useApi, useBiometric, usePushNotifications
+│           ├── lib/                   # API client, auth storage, utils, theme, constants
+│           └── providers/             # AuthProvider, ThemeProvider
 ├── packages/
 │   ├── api-client/                   # Auto-generated TypeScript API client (openapi-ts + @hey-api/client-fetch)
 │   │   ├── openapi-ts.config.ts      # Code generation config (input: openapi.json, output: src/)
@@ -106,14 +120,8 @@ fyNaNs/
 │           └── constants.ts          # App-wide constants (notifications, theme, pagination)
 ├── scripts/
 │   ├── seed-categories.py            # Seeds 40+ default transaction categories
-│   ├── generate-api-client.sh        # Downloads OpenAPI spec and generates TypeScript client
-│   ├── deploy.sh                     # Production deployment (build, migrate, restart)
-│   ├── backup-db.sh                  # pg_dump to OCI Object Storage
-│   ├── restore-db.sh                 # Restore from OCI Object Storage backup
-│   └── setup-server.sh               # One-time OCI ARM VM setup
-├── Caddyfile                          # Reverse proxy config (auto HTTPS)
-├── docker-compose.yml                 # Local dev PostgreSQL
-└── docker-compose.prod.yml            # Production services (Caddy, API, web, DB)
+│   └── generate-api-client.sh        # Downloads OpenAPI spec and generates TypeScript client
+└── docker-compose.yml                # Local dev PostgreSQL
 ```
 
 ## Getting Started
@@ -154,38 +162,18 @@ poetry run pytest -v
 
 The API docs are available at `http://localhost:8000/docs` when running.
 
-## Production Deployment
-
-The app deploys to an OCI (Oracle Cloud Infrastructure) Always Free ARM VM with Docker Compose.
-
-### Architecture
-
-```
-Internet → [Caddy :443] → /api/* → [FastAPI :8000] → [PostgreSQL :5432]
-                        → /*     → [Next.js :3000]
-```
-
-- **Caddy** handles TLS termination (auto Let's Encrypt) and routing
-- **FastAPI** serves the REST API under `/api/*`
-- **Next.js** serves the web frontend
-- **PostgreSQL** runs in Docker with a persistent volume
-- All services on a single ARM VM (4 OCPU, 24 GB RAM)
-
-### Quick Deploy
+### Mobile App
 
 ```bash
-# On the OCI VM:
-./scripts/setup-server.sh   # One-time server setup
-cp .env.production.example .env.production
-# Fill in .env.production values
-./scripts/deploy.sh          # Build, migrate, start
+# Install dependencies (from repo root)
+pnpm install
+
+# Start Expo dev server
+cd apps/mobile
+pnpm start
 ```
 
-### Backups
-
-Daily automated backups via `pg_dump` to OCI Object Storage with 7 daily + 4 weekly retention. See `scripts/backup-db.sh`.
-
-For full deployment instructions, see [docs/oci-setup.md](docs/oci-setup.md).
+Scan the QR code with Expo Go on your device to run the app. The API URL defaults to `http://localhost:8888` and can be configured via the `EXPO_PUBLIC_API_URL` environment variable.
 
 ### GitHub Secrets Required
 

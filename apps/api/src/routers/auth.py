@@ -46,18 +46,27 @@ def _set_refresh_cookie(response: Response, token: str) -> None:
     )
 
 
-@router.post("/register", response_model=UserResponse, status_code=201)
-async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db)):
+@router.post("/register", response_model=TokenResponse, status_code=201)
+async def register(
+    request: RegisterRequest,
+    http_request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
     try:
         user = await register_user(db, request.email, request.password, request.name)
     except AuthError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message) from None
-    return UserResponse(
-        id=user.id,
-        email=user.email,
-        name=user.name,
-        avatar_url=user.avatar_url,
-        has_mfa=user.mfa_secret is not None,
+
+    device_info = http_request.headers.get("user-agent", "unknown")
+    access_token, refresh_token = await create_token_pair(db, user.id, device_info)
+
+    _set_refresh_cookie(response, refresh_token)
+
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        user=UserResponse.from_user(user),
     )
 
 
@@ -77,14 +86,18 @@ async def login(
     # If MFA is enabled, return a short-lived MFA token instead of full tokens
     if user.mfa_secret:
         mfa_token = create_mfa_pending_token(user.id)
-        return TokenResponse(access_token=mfa_token, mfa_required=True)
+        return TokenResponse(access_token="", mfa_required=True, mfa_token=mfa_token)
 
     device_info = http_request.headers.get("user-agent", "unknown")
     access_token, refresh_token = await create_token_pair(db, user.id, device_info)
 
     _set_refresh_cookie(response, refresh_token)
 
-    return TokenResponse(access_token=access_token)
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        user=UserResponse.from_user(user),
+    )
 
 
 @router.post("/refresh", response_model=TokenResponse)
@@ -110,7 +123,7 @@ async def refresh(
 
     _set_refresh_cookie(response, new_refresh)
 
-    return TokenResponse(access_token=access_token)
+    return TokenResponse(access_token=access_token, refresh_token=new_refresh)
 
 
 @router.post("/logout")

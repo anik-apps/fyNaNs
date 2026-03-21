@@ -1,3 +1,5 @@
+from datetime import date, timedelta
+
 import pytest
 from httpx import AsyncClient
 
@@ -95,21 +97,23 @@ async def test_delete_bill(client: AsyncClient, auth_headers: dict):
 
 @pytest.mark.asyncio
 async def test_upcoming_bills(client: AsyncClient, auth_headers: dict):
-    # Create a bill due soon
+    # Create a bill due soon (5 days from now — always within 30-day window)
+    soon = (date.today() + timedelta(days=5)).isoformat()
     await client.post("/api/bills", headers=auth_headers, json={
         "name": "Due Soon",
         "amount": "25.00",
         "frequency": "monthly",
         "day_of_month": 20,
-        "next_due_date": "2026-03-20",
+        "next_due_date": soon,
     })
-    # Create a bill due far away
+    # Create a bill due far away (120 days out — always outside 30-day window)
+    later = (date.today() + timedelta(days=120)).isoformat()
     await client.post("/api/bills", headers=auth_headers, json={
         "name": "Due Later",
         "amount": "100.00",
         "frequency": "monthly",
         "day_of_month": 15,
-        "next_due_date": "2026-06-15",
+        "next_due_date": later,
     })
 
     response = await client.get(

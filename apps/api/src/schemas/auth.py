@@ -19,6 +19,9 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     mfa_required: bool = False
+    refresh_token: str | None = None  # Included in body for mobile clients
+    mfa_token: str | None = None
+    user: "UserResponse | None" = None
 
 
 class UserResponse(BaseModel):
@@ -26,9 +29,19 @@ class UserResponse(BaseModel):
     email: str
     name: str
     avatar_url: str | None
-    has_mfa: bool
+    has_mfa: bool = False
 
     model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_user(cls, user) -> "UserResponse":
+        return cls(
+            id=user.id,
+            email=user.email,
+            name=user.name,
+            avatar_url=user.avatar_url,
+            has_mfa=user.mfa_secret is not None,
+        )
 
 
 class OAuthRequest(BaseModel):

@@ -11,9 +11,11 @@ async def test_register_success(client: AsyncClient):
     })
     assert response.status_code == 201
     data = response.json()
-    assert data["email"] == "test@example.com"
-    assert data["name"] == "Test User"
-    assert "id" in data
+    assert "access_token" in data
+    user = data["user"]
+    assert user["email"] == "test@example.com"
+    assert user["name"] == "Test User"
+    assert "id" in user
 
 
 @pytest.mark.asyncio

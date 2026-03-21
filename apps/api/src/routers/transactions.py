@@ -227,6 +227,8 @@ async def get_transaction(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    from src.models.account import Account
+
     result = await db.execute(
         select(Transaction).where(
             Transaction.id == transaction_id,
@@ -236,7 +238,31 @@ async def get_transaction(
     txn = result.scalar_one_or_none()
     if not txn:
         raise HTTPException(status_code=404, detail="Transaction not found")
-    return _txn_to_response(txn)
+
+    acct_name, acct_type = "Unknown", "checking"
+    acct_result = await db.execute(
+        select(Account.name, Account.type).where(Account.id == txn.account_id)
+    )
+    acct_row = acct_result.one_or_none()
+    if acct_row:
+        acct_name, acct_type = acct_row[0], acct_row[1]
+
+    cat_name, cat_color = "Uncategorized", "#6B7280"
+    if txn.category_id:
+        cat_result = await db.execute(
+            select(Category.name, Category.color).where(Category.id == txn.category_id)
+        )
+        cat_row = cat_result.one_or_none()
+        if cat_row:
+            cat_name, cat_color = cat_row[0], cat_row[1]
+
+    return _txn_to_response(
+        txn,
+        category_name=cat_name,
+        category_color=cat_color,
+        account_name=acct_name,
+        account_type=acct_type,
+    )
 
 
 @router.post("", response_model=TransactionResponse, status_code=201)

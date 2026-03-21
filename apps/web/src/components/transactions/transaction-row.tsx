@@ -82,7 +82,6 @@ export function TransactionRow({
   category_name,
   category_color,
   account_name,
-  account_type = "checking",
   is_pending,
 }: TransactionRowProps) {
   const numAmount = parseFloat(amount);
