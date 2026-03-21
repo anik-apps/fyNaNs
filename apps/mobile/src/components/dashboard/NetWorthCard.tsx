@@ -53,6 +53,11 @@ function NetWorthChart({
   const { width: screenWidth } = useWindowDimensions();
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
 
+  // Clear selection when data changes (period switch)
+  useEffect(() => {
+    setSelectedIndex(null);
+  }, [data]);
+
   if (data.length < 2) return null;
 
   const chartWidth = screenWidth - 64;
@@ -91,11 +96,6 @@ function NetWorthChart({
   for (let i = 0; i < labelCount; i++) {
     labelIndices.push(Math.round((i / (labelCount - 1)) * (data.length - 1)));
   }
-
-  // Clear selection when data changes (period switch)
-  useEffect(() => {
-    setSelectedIndex(null);
-  }, [data]);
 
   const handleTouch = (e: GestureResponderEvent) => {
     const touchX = e.nativeEvent.locationX;

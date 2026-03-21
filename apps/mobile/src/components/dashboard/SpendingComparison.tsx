@@ -46,6 +46,11 @@ function SpendingBarChart({
   const { width: screenWidth } = useWindowDimensions();
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
 
+  // Clear selection when data changes (view switch)
+  useEffect(() => {
+    setSelectedIndex(null);
+  }, [data]);
+
   if (data.length === 0) return null;
 
   const chartWidth = screenWidth - 64;
@@ -62,11 +67,6 @@ function SpendingBarChart({
   const groupWidth = chartWidth / data.length;
   const barWidth = Math.max(4, Math.min(16, groupWidth * 0.3));
   const barGap = 2;
-
-  // Clear selection when data changes (view switch)
-  useEffect(() => {
-    setSelectedIndex(null);
-  }, [data]);
 
   const handleTouch = (e: GestureResponderEvent) => {
     const touchX = e.nativeEvent.locationX;
