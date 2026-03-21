@@ -1,8 +1,9 @@
 // Base URL for API calls.
 // On mobile, we need the full URL since there's no same-origin proxy.
 // Default to localhost:8888 for dev; override via EXPO_PUBLIC_API_URL env var.
+// 10.0.2.2 is Android emulator's alias for host machine localhost
 export const API_URL =
-  process.env.EXPO_PUBLIC_API_URL || "http://localhost:8888";
+  process.env.EXPO_PUBLIC_API_URL || "http://10.0.2.2:8888";
 
 export const ROUTES = {
   LOGIN: "/(auth)/login",

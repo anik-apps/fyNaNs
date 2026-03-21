@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -14,6 +14,10 @@ import { useTheme } from "@/src/providers/ThemeProvider";
 import { ErrorView } from "@/src/components/shared/ErrorView";
 import { formatCurrency, formatRelativeDate } from "@/src/lib/utils";
 import { ACCOUNT_TYPE_LABELS } from "@fynans/shared-types";
+import {
+  CategoryDonutChart,
+  type CategorySlice,
+} from "@/src/components/accounts/CategoryDonutChart";
 
 const INCOME_CATEGORIES = new Set([
   "Income",
@@ -23,6 +27,14 @@ const INCOME_CATEGORIES = new Set([
   "Investments",
 ]);
 const TRANSFER_CATEGORIES = new Set(["Transfer"]);
+const SKIP_CATEGORIES = new Set([
+  "Income",
+  "Salary",
+  "Freelance",
+  "Other Income",
+  "Investments",
+  "Transfer",
+]);
 
 function getDisplayType(
   amount: number,
@@ -56,6 +68,26 @@ export default function AccountDetailScreen() {
     setRefreshing(false);
   }, [refresh, refreshTx]);
 
+  const transactions = txData?.items || txData || [];
+
+  const categoryBreakdown = useMemo((): CategorySlice[] => {
+    const map: Record<string, CategorySlice> = {};
+    for (const txn of transactions) {
+      const cat = txn.category_name || "Uncategorized";
+      if (SKIP_CATEGORIES.has(cat)) continue;
+      const amt = Math.abs(
+        typeof txn.amount === "string" ? parseFloat(txn.amount) : txn.amount
+      );
+      if (!map[cat]) {
+        map[cat] = { name: cat, color: txn.category_color || "#6b7280", total: 0 };
+      }
+      map[cat].total += amt;
+    }
+    return Object.values(map)
+      .filter((c) => c.total > 0)
+      .sort((a, b) => b.total - a.total);
+  }, [transactions]);
+
   if (isLoading) {
     return (
       <View
@@ -76,8 +108,6 @@ export default function AccountDetailScreen() {
       </View>
     );
   }
-
-  const transactions = txData?.items || txData || [];
 
   return (
     <View
@@ -108,6 +138,24 @@ export default function AccountDetailScreen() {
                 ? ` · ${account.institution_name}`
                 : ""}
             </Text>
+            {categoryBreakdown.length > 0 && (
+              <View
+                style={[
+                  styles.chartSection,
+                  { borderTopColor: theme.colors.border },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.chartTitle,
+                    { color: theme.colors.textSecondary },
+                  ]}
+                >
+                  Spending by Category
+                </Text>
+                <CategoryDonutChart data={categoryBreakdown} />
+              </View>
+            )}
             <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
               Transactions
             </Text>
@@ -200,6 +248,16 @@ const styles = StyleSheet.create({
   },
   balance: { fontSize: 32, fontWeight: "bold" },
   accountType: { fontSize: 14, marginTop: 4 },
+  chartSection: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+  },
+  chartTitle: {
+    fontSize: 13,
+    fontWeight: "500",
+    marginBottom: 12,
+  },
   sectionTitle: {
     fontSize: 16,
     fontWeight: "600",

@@ -8,7 +8,7 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from "react-native";
-import { Plus, Wallet } from "lucide-react-native";
+import { Plus } from "lucide-react-native";
 import { BudgetCard } from "@/src/components/budgets/BudgetCard";
 import { BudgetForm } from "@/src/components/budgets/BudgetForm";
 import { EmptyState } from "@/src/components/shared/EmptyState";
@@ -87,9 +87,8 @@ export default function BudgetsScreen() {
         contentContainerStyle={styles.list}
         ListEmptyComponent={
           <EmptyState
-            icon={<Wallet color={theme.colors.primary} size={32} />}
-            title="No budgets yet"
-            description="Set spending limits by category and get notified before you overspend"
+            title="No budgets"
+            description="Create a budget to track your spending"
             action={
               <TouchableOpacity
                 style={[styles.addBtn, { backgroundColor: theme.colors.primary }]}

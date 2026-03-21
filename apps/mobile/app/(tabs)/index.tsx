@@ -7,8 +7,6 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from "react-native";
-import { useRouter } from "expo-router";
-import { NetWorthSummary } from "@/src/components/dashboard/NetWorthSummary";
 import { NetWorthCard } from "@/src/components/dashboard/NetWorthCard";
 import { SpendingComparison } from "@/src/components/dashboard/SpendingComparison";
 import { BudgetBars } from "@/src/components/dashboard/BudgetBars";
@@ -20,7 +18,6 @@ import { ErrorView } from "@/src/components/shared/ErrorView";
 
 export default function DashboardScreen() {
   const { theme } = useTheme();
-  const router = useRouter();
   const [data, setData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -73,7 +70,6 @@ export default function DashboardScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
-      {data?.net_worth && <NetWorthSummary data={data.net_worth} />}
       {data?.net_worth && <NetWorthCard data={data.net_worth} />}
       {data?.spending_comparison && (
         <SpendingComparison data={data.spending_comparison} />
@@ -81,10 +77,7 @@ export default function DashboardScreen() {
       {data?.top_budgets && <BudgetBars budgets={data.top_budgets} />}
       {data?.upcoming_bills && <UpcomingBills bills={data.upcoming_bills} />}
       {data?.recent_transactions && (
-        <RecentTransactions
-          transactions={data.recent_transactions}
-          onSeeAll={() => router.push("/(tabs)/transactions")}
-        />
+        <RecentTransactions transactions={data.recent_transactions} />
       )}
       <View style={styles.bottomPadding} />
     </ScrollView>

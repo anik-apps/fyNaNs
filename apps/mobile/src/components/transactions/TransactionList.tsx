@@ -1,16 +1,7 @@
-import React, { useMemo } from "react";
-import {
-  SectionList,
-  RefreshControl,
-  ActivityIndicator,
-  View,
-  Text,
-  StyleSheet,
-} from "react-native";
-import { useRouter } from "expo-router";
+import React from "react";
+import { FlatList, RefreshControl, ActivityIndicator, View } from "react-native";
 import { TransactionRow } from "./TransactionRow";
 import { useTheme } from "@/src/providers/ThemeProvider";
-import { formatDate } from "@/src/lib/utils";
 
 interface Transaction {
   id: string;
@@ -35,46 +26,6 @@ interface TransactionListProps {
   ListEmptyComponent?: React.ReactElement;
 }
 
-interface TransactionSection {
-  title: string;
-  data: Transaction[];
-}
-
-function getDateGroupLabel(dateStr: string): string {
-  const d = new Date(dateStr);
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const diffDays = Math.round(
-    (today.getTime() - target.getTime()) / (1000 * 60 * 60 * 24)
-  );
-
-  if (diffDays === 0) return "Today";
-  if (diffDays === 1) return "Yesterday";
-  return formatDate(d);
-}
-
-function groupTransactionsByDate(
-  transactions: Transaction[]
-): TransactionSection[] {
-  const groups = new Map<string, Transaction[]>();
-
-  for (const tx of transactions) {
-    const label = getDateGroupLabel(tx.date);
-    const existing = groups.get(label);
-    if (existing) {
-      existing.push(tx);
-    } else {
-      groups.set(label, [tx]);
-    }
-  }
-
-  return Array.from(groups.entries()).map(([title, data]) => ({
-    title,
-    data,
-  }));
-}
-
 export function TransactionList({
   transactions,
   refreshing,
@@ -86,16 +37,10 @@ export function TransactionList({
   ListEmptyComponent,
 }: TransactionListProps) {
   const { theme } = useTheme();
-  const router = useRouter();
-
-  const sections = useMemo(
-    () => groupTransactionsByDate(transactions),
-    [transactions]
-  );
 
   return (
-    <SectionList
-      sections={sections}
+    <FlatList
+      data={transactions}
       keyExtractor={(item) => item.id}
       renderItem={({ item }) => (
         <TransactionRow
@@ -108,22 +53,7 @@ export function TransactionList({
           category_color={item.category_color}
           account_name={item.account_name}
           is_pending={item.is_pending}
-          onPress={() => router.push(`/(tabs)/transactions/${item.id}`)}
         />
-      )}
-      renderSectionHeader={({ section: { title } }) => (
-        <View
-          style={[
-            styles.sectionHeader,
-            { backgroundColor: theme.colors.surface },
-          ]}
-        >
-          <Text
-            style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}
-          >
-            {title}
-          </Text>
-        </View>
       )}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
@@ -140,20 +70,6 @@ export function TransactionList({
         ) : null
       }
       contentContainerStyle={{ paddingBottom: 24 }}
-      stickySectionHeadersEnabled={true}
     />
   );
 }
-
-const styles = StyleSheet.create({
-  sectionHeader: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: "600",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-});

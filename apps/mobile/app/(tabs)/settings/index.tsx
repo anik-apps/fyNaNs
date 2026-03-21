@@ -123,29 +123,24 @@ export default function SettingsScreen() {
           label: "Export Data",
           onPress: handleExportData,
         },
-      ],
-    },
-    {
-      title: "Session",
-      data: [
-        {
-          key: "logout",
-          icon: LogOut,
-          label: "Sign Out",
-          destructive: false,
-          onPress: handleLogout,
-        },
-      ],
-    },
-    {
-      title: "Danger Zone",
-      data: [
         {
           key: "delete",
           icon: Trash2,
           label: "Delete Account",
           destructive: true,
           onPress: handleDeleteAccount,
+        },
+      ],
+    },
+    {
+      title: "",
+      data: [
+        {
+          key: "logout",
+          icon: LogOut,
+          label: "Sign Out",
+          destructive: true,
+          onPress: handleLogout,
         },
       ],
     },
@@ -162,18 +157,12 @@ export default function SettingsScreen() {
             style={[
               styles.sectionHeader,
               { backgroundColor: theme.colors.surface },
-              section.title === "Danger Zone" && { paddingTop: 32 },
             ]}
           >
             <Text
               style={[
                 styles.sectionTitle,
-                {
-                  color:
-                    section.title === "Danger Zone"
-                      ? theme.colors.error
-                      : theme.colors.textSecondary,
-                },
+                { color: theme.colors.textSecondary },
               ]}
             >
               {section.title}
@@ -190,12 +179,6 @@ export default function SettingsScreen() {
             style={[
               styles.row,
               { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
-              item.key === "delete" && {
-                borderWidth: 1,
-                borderColor: theme.colors.error + "30",
-                borderRadius: 12,
-                marginHorizontal: 16,
-              },
             ]}
             onPress={item.isToggle ? undefined : item.onPress}
             disabled={item.isToggle}
