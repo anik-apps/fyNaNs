@@ -6,16 +6,17 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   useWindowDimensions,
+  GestureResponderEvent,
 } from "react-native";
-import Svg, { Rect, Text as SvgText } from "react-native-svg";
+import Svg, { Rect, Text as SvgText, Line } from "react-native-svg";
 import { formatCurrency } from "@/src/lib/utils";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import type { Theme } from "@/src/lib/theme";
 import { apiFetch } from "@/src/lib/api-client";
 
 interface SpendingData {
-  current_month: number | string;
-  previous_month: number | string;
+  current_month_total: number | string;
+  previous_month_total: number | string;
   difference?: number | string;
   percent_change?: number | null;
 }
@@ -43,12 +44,13 @@ function SpendingBarChart({
   theme: Theme;
 }) {
   const { width: screenWidth } = useWindowDimensions();
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
 
   if (data.length === 0) return null;
 
   const chartWidth = screenWidth - 64;
-  const chartHeight = 150;
-  const paddingTop = 8;
+  const chartHeight = 220;
+  const paddingTop = 18;
   const paddingBottom = 24;
   const graphHeight = chartHeight - paddingTop - paddingBottom;
 
@@ -61,13 +63,58 @@ function SpendingBarChart({
   const barWidth = Math.max(4, Math.min(16, groupWidth * 0.3));
   const barGap = 2;
 
+  // Clear selection when data changes (view switch)
+  useEffect(() => {
+    setSelectedIndex(null);
+  }, [data]);
+
+  const handleTouch = (e: GestureResponderEvent) => {
+    const touchX = e.nativeEvent.locationX;
+    const idx = Math.floor(touchX / groupWidth);
+    setSelectedIndex(Math.max(0, Math.min(idx, data.length - 1)));
+  };
+
+  const sel = selectedIndex;
+
   return (
     <View style={styles.chartContainer}>
+      {sel !== null && (
+        <View
+          style={[
+            styles.tooltip,
+            { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
+          ]}
+        >
+          <Text style={[styles.tooltipLabel, { color: theme.colors.textSecondary }]}>
+            {data[sel].label}
+          </Text>
+          <View style={styles.tooltipRow}>
+            <Text style={[styles.tooltipValue, { color: SPENDING_COLOR }]}>
+              {`-$${data[sel].spending.toLocaleString()}`}
+            </Text>
+            <Text style={[styles.tooltipValue, { color: INCOME_COLOR }]}>
+              {`+$${data[sel].income.toLocaleString()}`}
+            </Text>
+          </View>
+        </View>
+      )}
+      <View
+        onStartShouldSetResponder={() => true}
+        onMoveShouldSetResponder={() => true}
+        onResponderGrant={handleTouch}
+        onResponderMove={handleTouch}
+        onResponderRelease={() => setTimeout(() => setSelectedIndex(null), 5000)}
+      >
       <Svg width={chartWidth} height={chartHeight}>
         {data.map((point, i) => {
           const groupCenter = groupWidth * i + groupWidth / 2;
           const spendingHeight = (point.spending / maxVal) * graphHeight;
           const incomeHeight = (point.income / maxVal) * graphHeight;
+          const isSelected = sel === i;
+          const spendingOpacity = sel === null || isSelected ? 1 : 0.4;
+          const incomeOpacity = sel === null || isSelected ? 1 : 0.4;
+
+          const showValueLabel = isSelected || (sel === null && i === data.length - 1);
 
           return (
             <React.Fragment key={i}>
@@ -78,6 +125,7 @@ function SpendingBarChart({
                 height={spendingHeight}
                 rx={3}
                 fill={SPENDING_COLOR}
+                opacity={spendingOpacity}
               />
               <Rect
                 x={groupCenter + barGap / 2}
@@ -86,12 +134,38 @@ function SpendingBarChart({
                 height={incomeHeight}
                 rx={3}
                 fill={INCOME_COLOR}
+                opacity={incomeOpacity}
               />
+              {showValueLabel && spendingHeight > 0 && (
+                <SvgText
+                  x={groupCenter - barGap / 2 - barWidth / 2}
+                  y={paddingTop + graphHeight - spendingHeight - 4}
+                  fontSize={9}
+                  fontWeight="bold"
+                  fill={SPENDING_COLOR}
+                  textAnchor="middle"
+                >
+                  {`$${Math.round(point.spending).toLocaleString()}`}
+                </SvgText>
+              )}
+              {showValueLabel && incomeHeight > 0 && (
+                <SvgText
+                  x={groupCenter + barGap / 2 + barWidth / 2}
+                  y={paddingTop + graphHeight - incomeHeight - 4}
+                  fontSize={9}
+                  fontWeight="bold"
+                  fill={INCOME_COLOR}
+                  textAnchor="middle"
+                >
+                  {`$${Math.round(point.income).toLocaleString()}`}
+                </SvgText>
+              )}
               <SvgText
                 x={groupCenter}
                 y={chartHeight - 2}
                 fontSize={9}
-                fill={theme.colors.textSecondary}
+                fill={isSelected ? theme.colors.text : theme.colors.textSecondary}
+                fontWeight={isSelected ? "bold" : "normal"}
                 textAnchor="middle"
               >
                 {point.label}
@@ -99,7 +173,22 @@ function SpendingBarChart({
             </React.Fragment>
           );
         })}
+        {sel !== null && (
+          <>
+            <Line
+              x1={groupWidth * sel + groupWidth / 2}
+              y1={paddingTop}
+              x2={groupWidth * sel + groupWidth / 2}
+              y2={paddingTop + graphHeight}
+              stroke={theme.colors.textSecondary}
+              strokeWidth={1}
+              strokeDasharray="3,3"
+              opacity={0.5}
+            />
+          </>
+        )}
       </Svg>
+      </View>
       <View style={styles.legend}>
         <View style={styles.legendItem}>
           <View style={[styles.legendDot, { backgroundColor: SPENDING_COLOR }]} />
@@ -121,13 +210,13 @@ function SpendingBarChart({
 export function SpendingComparison({ data }: { data: SpendingData }) {
   const { theme } = useTheme();
   const current =
-    typeof data.current_month === "string"
-      ? parseFloat(data.current_month)
-      : data.current_month;
+    typeof data.current_month_total === "string"
+      ? parseFloat(data.current_month_total)
+      : data.current_month_total;
   const previous =
-    typeof data.previous_month === "string"
-      ? parseFloat(data.previous_month)
-      : data.previous_month;
+    typeof data.previous_month_total === "string"
+      ? parseFloat(data.previous_month_total)
+      : data.previous_month_total;
 
   const diff = data.difference != null
     ? typeof data.difference === "string"
@@ -166,7 +255,7 @@ export function SpendingComparison({ data }: { data: SpendingData }) {
 
   return (
     <View
-      style={[styles.card, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
+      style={[styles.card, { backgroundColor: theme.colors.card }]}
     >
       <View style={styles.headerRow}>
         <Text style={[styles.title, { color: theme.colors.textSecondary }]}>
@@ -241,11 +330,15 @@ export function SpendingComparison({ data }: { data: SpendingData }) {
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 12,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
     padding: 16,
     marginHorizontal: 16,
     marginTop: 12,
-    borderWidth: 1,
   },
   headerRow: {
     flexDirection: "row",
@@ -255,18 +348,38 @@ const styles = StyleSheet.create({
   title: { fontSize: 14 },
   viewRow: { flexDirection: "row", gap: 2 },
   viewButton: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 6,
   },
-  viewLabel: { fontSize: 11, fontWeight: "600" },
+  viewLabel: { fontSize: 13, fontWeight: "600" },
   currentAmount: { fontSize: 24, fontWeight: "bold", marginTop: 8 },
   changeRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 },
   changeText: { fontSize: 13, fontWeight: "500" },
   changeContext: { fontSize: 13 },
-  chartContainer: { marginTop: 12, alignItems: "center" },
+  chartContainer: { marginTop: 12, alignItems: "center", position: "relative" },
+  tooltip: {
+    position: "absolute",
+    top: 0,
+    alignSelf: "center",
+    zIndex: 10,
+    flexDirection: "column",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+  },
+  tooltipLabel: { fontSize: 11, marginBottom: 2 },
+  tooltipRow: { flexDirection: "row", gap: 12 },
+  tooltipValue: { fontSize: 12, fontWeight: "bold" },
   loadingContainer: {
-    height: 150,
+    height: 200,
     justifyContent: "center",
     alignItems: "center",
   },

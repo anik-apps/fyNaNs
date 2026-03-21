@@ -37,6 +37,7 @@ export default function TabLayout() {
         name="accounts"
         options={{
           title: "Accounts",
+          headerShown: false,
           tabBarIcon: ({ color, size }) => (
             <Landmark color={color} size={size} />
           ),

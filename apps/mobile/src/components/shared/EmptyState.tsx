@@ -14,7 +14,16 @@ export function EmptyState({ icon, title, description, action }: EmptyStateProps
 
   return (
     <View style={styles.container}>
-      {icon && <View style={styles.icon}>{icon}</View>}
+      {icon && (
+        <View
+          style={[
+            styles.iconCircle,
+            { backgroundColor: theme.colors.primary + "15" },
+          ]}
+        >
+          {icon}
+        </View>
+      )}
       <Text style={[styles.title, { color: theme.colors.text }]}>
         {title}
       </Text>
@@ -35,7 +44,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 32,
   },
-  icon: { marginBottom: 16 },
+  iconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 16,
+  },
   title: { fontSize: 18, fontWeight: "600", textAlign: "center" },
   description: {
     fontSize: 14,

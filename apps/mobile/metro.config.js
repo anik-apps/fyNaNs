@@ -18,4 +18,8 @@ config.resolver.nodeModulesPaths = [
 // Ensure Metro resolves workspace packages' source files
 config.resolver.disableHierarchicalLookup = false;
 
+// Support pnpm symlinked packages
+config.resolver.unstable_enableSymlinks = true;
+config.resolver.unstable_enablePackageExports = true;
+
 module.exports = config;

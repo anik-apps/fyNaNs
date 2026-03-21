@@ -121,45 +121,37 @@ export default function AccountDetailScreen() {
         data={transactions}
         keyExtractor={(item: any) => item.id}
         ListHeaderComponent={
-          <View
-            style={[
-              styles.header,
-              { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
-            ]}
-          >
-            <Text style={[styles.balance, { color: theme.colors.text }]}>
-              {formatCurrency(account.balance)}
-            </Text>
-            <Text
-              style={[styles.accountType, { color: theme.colors.textSecondary }]}
+          <>
+            <View
+              style={[
+                styles.header,
+                { backgroundColor: theme.colors.card },
+              ]}
             >
-              {ACCOUNT_TYPE_LABELS[account.type as keyof typeof ACCOUNT_TYPE_LABELS] || account.type}
-              {account.institution_name
-                ? ` · ${account.institution_name}`
-                : ""}
-            </Text>
-            {categoryBreakdown.length > 0 && (
-              <View
-                style={[
-                  styles.chartSection,
-                  { borderTopColor: theme.colors.border },
-                ]}
+              <Text style={[styles.balance, { color: theme.colors.text }]}>
+                {formatCurrency(account.balance)}
+              </Text>
+              <Text
+                style={[styles.accountType, { color: theme.colors.textSecondary }]}
               >
-                <Text
-                  style={[
-                    styles.chartTitle,
-                    { color: theme.colors.textSecondary },
-                  ]}
-                >
+                {ACCOUNT_TYPE_LABELS[account.type as keyof typeof ACCOUNT_TYPE_LABELS] || account.type}
+                {account.institution_name
+                  ? ` · ${account.institution_name}`
+                  : ""}
+              </Text>
+            </View>
+            {categoryBreakdown.length > 0 && (
+              <View style={[styles.chartCard, { backgroundColor: theme.colors.card }]}>
+                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
                   Spending by Category
                 </Text>
                 <CategoryDonutChart data={categoryBreakdown} />
               </View>
             )}
-            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+            <Text style={[styles.txSectionTitle, { color: theme.colors.text }]}>
               Transactions
             </Text>
-          </View>
+          </>
         }
         renderItem={({ item }: { item: any }) => {
           const numAmount =
@@ -241,27 +233,38 @@ const styles = StyleSheet.create({
   header: {
     padding: 16,
     marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginBottom: 12,
+    marginTop: 12,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
   },
   balance: { fontSize: 32, fontWeight: "bold" },
   accountType: { fontSize: 14, marginTop: 4 },
-  chartSection: {
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-  },
-  chartTitle: {
-    fontSize: 13,
-    fontWeight: "500",
-    marginBottom: 12,
+  chartCard: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
   },
   sectionTitle: {
     fontSize: 16,
     fontWeight: "600",
-    marginTop: 20,
+    marginBottom: 8,
+  },
+  txSectionTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    marginTop: 16,
+    marginBottom: 4,
+    marginHorizontal: 16,
   },
   txRow: {
     flexDirection: "row",
