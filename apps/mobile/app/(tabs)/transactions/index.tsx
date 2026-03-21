@@ -182,29 +182,29 @@ export default function TransactionsScreen() {
         >
           {filters.categoryName && (
             <TouchableOpacity
-              style={styles.chip}
+              style={[styles.chip, { backgroundColor: theme.colors.primary + '15', borderColor: theme.colors.primary + '30' }]}
               onPress={() => setFilters(f => ({ ...f, categoryId: '', categoryName: '' }))}
             >
-              <Text style={styles.chipText}>{filters.categoryName}</Text>
-              <Text style={styles.chipClose}>×</Text>
+              <Text style={[styles.chipText, { color: theme.colors.primary }]}>{filters.categoryName}</Text>
+              <Text style={[styles.chipClose, { color: theme.colors.primary + '80' }]}>×</Text>
             </TouchableOpacity>
           )}
           {filters.dateFrom && (
             <TouchableOpacity
-              style={styles.chip}
+              style={[styles.chip, { backgroundColor: theme.colors.primary + '15', borderColor: theme.colors.primary + '30' }]}
               onPress={() => setFilters(f => ({ ...f, dateFrom: '', dateTo: '' }))}
             >
-              <Text style={styles.chipText}>{getDateLabel(filters)}</Text>
-              <Text style={styles.chipClose}>×</Text>
+              <Text style={[styles.chipText, { color: theme.colors.primary }]}>{getDateLabel(filters)}</Text>
+              <Text style={[styles.chipClose, { color: theme.colors.primary + '80' }]}>×</Text>
             </TouchableOpacity>
           )}
           {filters.search && (
             <TouchableOpacity
-              style={styles.chip}
+              style={[styles.chip, { backgroundColor: theme.colors.primary + '15', borderColor: theme.colors.primary + '30' }]}
               onPress={() => { setFilters(f => ({ ...f, search: '' })); setSearch(''); }}
             >
-              <Text style={styles.chipText}>"{filters.search}"</Text>
-              <Text style={styles.chipClose}>×</Text>
+              <Text style={[styles.chipText, { color: theme.colors.primary }]}>"{filters.search}"</Text>
+              <Text style={[styles.chipClose, { color: theme.colors.primary + '80' }]}>×</Text>
             </TouchableOpacity>
           )}
         </ScrollView>
@@ -285,20 +285,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#eff6ff',
     borderWidth: 1,
-    borderColor: '#bfdbfe',
     borderRadius: 16,
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
   chipText: {
     fontSize: 12,
-    color: '#3b82f6',
     fontWeight: '500',
   },
   chipClose: {
     fontSize: 14,
-    color: '#93c5fd',
   },
 });

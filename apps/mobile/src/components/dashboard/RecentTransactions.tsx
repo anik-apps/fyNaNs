@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
-import { formatCurrency, formatRelativeDate } from "@/src/lib/utils";
+import { formatCurrency } from "@/src/lib/utils";
 import { getDisplayType } from "@/src/lib/transaction-utils";
 import { useTheme } from "@/src/providers/ThemeProvider";
 
