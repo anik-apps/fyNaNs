@@ -115,6 +115,7 @@ export function AccountList({
 
   return (
     <SectionList
+      style={{ flex: 1 }}
       sections={sections}
       keyExtractor={(item) => item.id}
       renderSectionHeader={({ section }) => (

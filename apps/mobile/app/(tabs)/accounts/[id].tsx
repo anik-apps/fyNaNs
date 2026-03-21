@@ -6,8 +6,9 @@ import {
   StyleSheet,
   RefreshControl,
   ActivityIndicator,
+  TouchableOpacity,
 } from "react-native";
-import { useLocalSearchParams, Stack } from "expo-router";
+import { useLocalSearchParams, Stack, useRouter } from "expo-router";
 import { useApi } from "@/src/hooks/useApi";
 import { apiFetch } from "@/src/lib/api-client";
 import { useTheme } from "@/src/providers/ThemeProvider";
@@ -48,6 +49,7 @@ function getDisplayType(
 export default function AccountDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { theme } = useTheme();
+  const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
 
   const { data: account, isLoading, error, refresh } = useApi<any>(() =>
@@ -174,11 +176,13 @@ export default function AccountDetailScreen() {
               : "";
 
           return (
-            <View
+            <TouchableOpacity
               style={[
                 styles.txRow,
                 { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
               ]}
+              onPress={() => router.push(`/(tabs)/transactions/${item.id}`)}
+              activeOpacity={0.7}
             >
               <View style={styles.txInfo}>
                 <Text
@@ -197,7 +201,7 @@ export default function AccountDetailScreen() {
                 {prefix}
                 {formatCurrency(absAmount)}
               </Text>
-            </View>
+            </TouchableOpacity>
           );
         }}
         ListEmptyComponent={

@@ -84,6 +84,7 @@ export default function DashboardScreen() {
         <RecentTransactions
           transactions={data.recent_transactions}
           onSeeAll={() => router.push("/(tabs)/transactions")}
+          onTransactionPress={(id) => router.push(`/(tabs)/transactions/${id}`)}
         />
       )}
       <View style={styles.bottomPadding} />

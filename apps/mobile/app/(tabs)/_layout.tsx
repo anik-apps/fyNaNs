@@ -1,12 +1,26 @@
-import { Tabs } from "expo-router";
+import { Tabs, useRouter } from "expo-router";
+import { TouchableOpacity } from "react-native";
 import {
   LayoutDashboard,
   Landmark,
   ArrowLeftRight,
   PiggyBank,
   Receipt,
-  Settings,
+  UserCircle,
 } from "lucide-react-native";
+
+function HeaderProfileButton() {
+  const router = useRouter();
+  return (
+    <TouchableOpacity
+      onPress={() => router.push("/(tabs)/settings")}
+      style={{ marginRight: 12 }}
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+    >
+      <UserCircle color="#4A90D9" size={26} />
+    </TouchableOpacity>
+  );
+}
 
 export default function TabLayout() {
   return (
@@ -15,6 +29,7 @@ export default function TabLayout() {
         tabBarActiveTintColor: "#4A90D9",
         tabBarInactiveTintColor: "#9CA3AF",
         headerShown: true,
+        headerRight: () => <HeaderProfileButton />,
         tabBarStyle: {
           borderTopWidth: 1,
           borderTopColor: "#E5E7EB",
@@ -73,10 +88,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name="settings"
         options={{
+          href: null,
           title: "Settings",
-          tabBarIcon: ({ color, size }) => (
-            <Settings color={color} size={size} />
-          ),
         }}
       />
     </Tabs>

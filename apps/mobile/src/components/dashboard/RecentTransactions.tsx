@@ -54,9 +54,11 @@ function groupByDate(transactions: Transaction[]): DateGroup[] {
 export function RecentTransactions({
   transactions,
   onSeeAll,
+  onTransactionPress,
 }: {
   transactions: Transaction[];
   onSeeAll?: () => void;
+  onTransactionPress?: (id: string) => void;
 }) {
   const { theme } = useTheme();
 
@@ -113,7 +115,12 @@ export function RecentTransactions({
             const CategoryIcon = getCategoryIcon(tx.category_name);
 
             return (
-              <View key={tx.id} style={styles.txRow}>
+              <TouchableOpacity
+                key={tx.id}
+                style={styles.txRow}
+                onPress={() => onTransactionPress?.(tx.id)}
+                activeOpacity={onTransactionPress ? 0.7 : 1}
+              >
                 <View style={[styles.iconBadge, { backgroundColor: getCategoryIconBg(tx.category_color || '#6b7280') }]}>
                   <CategoryIcon color={tx.category_color || '#6b7280'} size={16} />
                 </View>
@@ -136,7 +143,7 @@ export function RecentTransactions({
                   {prefix}
                   {formatCurrency(absAmount)}
                 </Text>
-              </View>
+              </TouchableOpacity>
             );
           })}
         </View>
