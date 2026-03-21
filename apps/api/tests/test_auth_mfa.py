@@ -39,7 +39,7 @@ async def test_mfa_full_flow(client: AsyncClient):
         "email": "mfa@example.com", "password": "SecurePass123!"
     })
     assert login2.json()["mfa_required"] is True
-    mfa_token = login2.json()["access_token"]
+    mfa_token = login2.json()["mfa_token"]
 
     # Verify MFA to get full tokens
     verify = await client.post("/api/auth/mfa/verify",
