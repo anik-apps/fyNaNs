@@ -5,7 +5,7 @@ import {
   RefreshControl,
   ActivityIndicator,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { AccountList } from "@/src/components/accounts/AccountList";
 import { EmptyState } from "@/src/components/shared/EmptyState";
 import { ErrorView } from "@/src/components/shared/ErrorView";
@@ -20,6 +20,12 @@ export default function AccountsScreen() {
 
   const { data, isLoading, error, refresh } = useApi<any[]>(() =>
     apiFetch("/api/accounts")
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
   );
 
   const onRefresh = useCallback(async () => {
