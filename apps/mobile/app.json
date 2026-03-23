@@ -42,8 +42,7 @@
           "color": "#4A90D9"
         }
       ],
-      "expo-build-properties",
-      "react-native-plaid-link-sdk"
+      "expo-build-properties"
     ],
     "extra": {
       "eas": {
