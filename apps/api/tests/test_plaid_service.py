@@ -6,7 +6,41 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.security import decrypt_value, encrypt_value
-from src.services.plaid import PlaidServiceError, create_link_token
+from src.services.plaid import PlaidServiceError, create_link_token, get_plaid_client
+
+
+@patch("src.services.plaid.settings")
+def test_get_plaid_client_sandbox(mock_settings):
+    mock_settings.plaid_sandbox_client_id = "sandbox_id"
+    mock_settings.plaid_sandbox_secret = "sandbox_secret"
+    mock_settings.plaid_client_id = "prod_id"
+    mock_settings.plaid_secret = "prod_secret"
+    mock_settings.plaid_env = "production"
+    get_plaid_client.cache_clear()
+    client = get_plaid_client("sandbox")
+    assert client is not None
+
+
+@patch("src.services.plaid.settings")
+def test_get_plaid_client_production(mock_settings):
+    mock_settings.plaid_client_id = "prod_id"
+    mock_settings.plaid_secret = "prod_secret"
+    mock_settings.plaid_env = "production"
+    get_plaid_client.cache_clear()
+    client = get_plaid_client("production")
+    assert client is not None
+
+
+@patch("src.services.plaid.settings")
+def test_get_plaid_client_falls_back_without_sandbox_creds(mock_settings):
+    mock_settings.plaid_env = "production"
+    mock_settings.plaid_sandbox_client_id = ""
+    mock_settings.plaid_sandbox_secret = ""
+    mock_settings.plaid_client_id = "prod_id"
+    mock_settings.plaid_secret = "prod_secret"
+    get_plaid_client.cache_clear()
+    client = get_plaid_client("sandbox")
+    assert client is not None
 
 
 @pytest.mark.asyncio
@@ -20,7 +54,7 @@ async def test_encrypt_decrypt_access_token():
 
 
 @pytest.mark.asyncio
-@patch("src.services.plaid._get_plaid_client")
+@patch("src.services.plaid.get_plaid_client")
 async def test_create_link_token(mock_client):
     mock_api = MagicMock()
     mock_response = MagicMock()
@@ -35,7 +69,7 @@ async def test_create_link_token(mock_client):
 
 
 @pytest.mark.asyncio
-@patch("src.services.plaid._get_plaid_client")
+@patch("src.services.plaid.get_plaid_client")
 async def test_exchange_public_token(mock_client, db_session: AsyncSession):
     from src.models.user import User
     from src.services.plaid import exchange_public_token
@@ -80,7 +114,7 @@ async def test_exchange_public_token(mock_client, db_session: AsyncSession):
 
 
 @pytest.mark.asyncio
-@patch("src.services.plaid._get_plaid_client")
+@patch("src.services.plaid.get_plaid_client")
 async def test_exchange_duplicate_item_raises(mock_client, db_session: AsyncSession):
     from src.core.security import encrypt_value
     from src.models.plaid_item import PlaidItem
@@ -116,7 +150,7 @@ async def test_exchange_duplicate_item_raises(mock_client, db_session: AsyncSess
 
 
 @pytest.mark.asyncio
-@patch("src.services.plaid._get_plaid_client")
+@patch("src.services.plaid.get_plaid_client")
 async def test_sync_transactions(mock_client, db_session: AsyncSession):
     from sqlalchemy import select
 
@@ -194,7 +228,7 @@ async def test_sync_transactions(mock_client, db_session: AsyncSession):
 
 
 @pytest.mark.asyncio
-@patch("src.services.plaid._get_plaid_client")
+@patch("src.services.plaid.get_plaid_client")
 async def test_sync_transactions_removes_deleted(mock_client, db_session: AsyncSession):
     from sqlalchemy import select
 
@@ -272,7 +306,7 @@ async def test_sync_transactions_removes_deleted(mock_client, db_session: AsyncS
 
 
 @pytest.mark.asyncio
-@patch("src.services.plaid._get_plaid_client")
+@patch("src.services.plaid.get_plaid_client")
 async def test_sync_liabilities(mock_client, db_session: AsyncSession):
     from src.core.security import encrypt_value
     from src.models.account import Account

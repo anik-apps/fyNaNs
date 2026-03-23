@@ -204,10 +204,10 @@ async def delete_plaid_item(
     try:
         from plaid.model.item_remove_request import ItemRemoveRequest
 
-        from src.services.plaid import _get_plaid_client, get_decrypted_access_token
+        from src.services.plaid import get_decrypted_access_token, get_plaid_client
 
         access_token = await get_decrypted_access_token(plaid_item)
-        client = _get_plaid_client()
+        client = get_plaid_client(plaid_item.environment)
         await asyncio.to_thread(client.item_remove, ItemRemoveRequest(access_token=access_token))
     except Exception:
         pass  # Log but proceed -- orphaned tokens expire naturally
