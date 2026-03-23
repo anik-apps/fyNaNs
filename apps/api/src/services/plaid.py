@@ -680,6 +680,9 @@ async def handle_webhook_event(
 # Fallback sync interval: 3 days instead of daily to conserve API quota
 FALLBACK_SYNC_INTERVAL = timedelta(days=3)
 
+# Minimum interval between manual syncs to prevent abuse
+MIN_SYNC_INTERVAL = timedelta(minutes=5)
+
 # Skip fallback sync if webhook-driven sync happened within this window
 WEBHOOK_RECENT_THRESHOLD = timedelta(hours=24)
 
