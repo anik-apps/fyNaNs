@@ -3,6 +3,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from src.core.database import get_db
 from src.models.account import Account
@@ -20,6 +21,9 @@ router = APIRouter(prefix="/accounts", tags=["accounts"])
 
 
 def _account_to_response(account: Account) -> AccountResponse:
+    last_synced = None
+    if account.plaid_item:
+        last_synced = account.plaid_item.last_synced_at
     return AccountResponse(
         id=account.id,
         institution_name=account.institution_name,
@@ -30,6 +34,7 @@ def _account_to_response(account: Account) -> AccountResponse:
         mask=account.mask,
         is_manual=account.is_manual,
         plaid_item_id=account.plaid_item_id,
+        last_synced_at=last_synced,
         created_at=account.created_at,
         updated_at=account.updated_at,
     )
@@ -41,7 +46,7 @@ async def list_accounts(
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(Account).where(Account.user_id == user.id)
+        select(Account).where(Account.user_id == user.id).options(selectinload(Account.plaid_item))
     )
     accounts = result.scalars().all()
     return [_account_to_response(a) for a in accounts]
@@ -76,6 +81,7 @@ async def get_account_endpoint(
 ):
     result = await db.execute(
         select(Account).where(Account.id == account_id, Account.user_id == user.id)
+        .options(selectinload(Account.plaid_item))
     )
     account = result.scalar_one_or_none()
     if not account:
@@ -92,6 +98,7 @@ async def update_account_endpoint(
 ):
     result = await db.execute(
         select(Account).where(Account.id == account_id, Account.user_id == user.id)
+        .options(selectinload(Account.plaid_item))
     )
     account = result.scalar_one_or_none()
     if not account:

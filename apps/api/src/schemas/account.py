@@ -29,6 +29,7 @@ class AccountResponse(BaseModel):
     mask: str | None
     is_manual: bool
     plaid_item_id: uuid.UUID | None
+    last_synced_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
