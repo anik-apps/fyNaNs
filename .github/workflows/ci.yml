@@ -113,6 +113,7 @@ jobs:
 
   test-integration:
     name: Integration + E2E Tests
+    environment: ${{ github.event_name == 'pull_request' && 'integration-tests' || '' }}
     runs-on: ubuntu-latest
     services:
       postgres:

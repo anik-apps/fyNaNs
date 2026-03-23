@@ -140,28 +140,31 @@ class TestPlaidSandboxTransactions:
         # available immediately, but webhooks won't arrive in CI.
         # Retry the sync a few times since Plaid sandbox may need a
         # moment after token exchange before transactions are ready.
-        synced = False
-        for _attempt in range(5):
-            sync_resp = client.post(
-                f"/plaid/items/{item_id}/sync", headers=headers,
-            )
-            if sync_resp.status_code == 200:
-                sync_data = sync_resp.json()
-                if sync_data.get("added", 0) > 0:
-                    synced = True
-                    break
-            time.sleep(2)
+        # Trigger sync once — Plaid sandbox may not have transactions
+        # ready immediately after token exchange, so we poll afterwards.
+        # The 5-minute rate limit means we can only sync once; subsequent
+        # calls return 429.
+        sync_resp = client.post(
+            f"/plaid/items/{item_id}/sync", headers=headers,
+        )
+        if sync_resp.status_code == 200:
+            sync_data = sync_resp.json()
+            synced = sync_data.get("added", 0) > 0 or sync_data.get("modified", 0) > 0
+        elif sync_resp.status_code == 429:
+            synced = True  # Already synced
+        else:
+            synced = False
 
-        # Now poll the transactions endpoint
+        # Poll the transactions endpoint — give Plaid sandbox time
         transactions = []
-        for _ in range(10):
+        for _ in range(15):
             resp = client.get("/transactions", headers=headers)
             assert resp.status_code == 200
             data = resp.json()
             transactions = data if isinstance(data, list) else data.get("items", [])
             if transactions:
                 break
-            time.sleep(1)
+            time.sleep(2)
 
         assert len(transactions) > 0, (
             f"Expected sandbox transactions after sync (sync triggered: {synced})"
