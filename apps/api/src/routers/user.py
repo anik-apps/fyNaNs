@@ -113,10 +113,10 @@ async def _revoke_plaid_tokens(db: AsyncSession, user_id: uuid.UUID) -> None:
 
     for item in plaid_items:
         try:
-            from src.services.plaid import _get_plaid_client, get_decrypted_access_token
+            from src.services.plaid import get_decrypted_access_token, get_plaid_client
 
             access_token = await get_decrypted_access_token(item)
-            client = _get_plaid_client()
+            client = get_plaid_client(item.environment)
             from plaid.model.item_remove_request import ItemRemoveRequest
 
             client.item_remove(ItemRemoveRequest(access_token=access_token))

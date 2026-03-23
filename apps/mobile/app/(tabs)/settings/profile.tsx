@@ -8,12 +8,15 @@ import {
   Alert,
   ActivityIndicator,
 } from "react-native";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { apiFetch } from "@/src/lib/api-client";
 import { useTheme } from "@/src/providers/ThemeProvider";
+import { useAuth } from "@/src/hooks/useAuth";
 
 export default function ProfileSettingsScreen() {
   const { theme } = useTheme();
+  const { user } = useAuth();
+  const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -117,6 +120,17 @@ export default function ProfileSettingsScreen() {
             {isSaving ? "Saving..." : "Save Changes"}
           </Text>
         </TouchableOpacity>
+
+        {user?.is_dev && (
+          <TouchableOpacity
+            style={[styles.devButton, { borderColor: theme.colors.border }]}
+            onPress={() => router.push("/settings/dev")}
+          >
+            <Text style={[styles.devButtonText, { color: theme.colors.textSecondary }]}>
+              Dev Settings
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
@@ -143,4 +157,11 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: { opacity: 0.6 },
   buttonText: { color: "#FFF", fontSize: 16, fontWeight: "600" },
+  devButton: {
+    borderRadius: 8,
+    padding: 14,
+    alignItems: "center",
+    borderWidth: 1,
+  },
+  devButtonText: { fontSize: 14, fontWeight: "500" },
 });

@@ -22,6 +22,15 @@ class Settings(BaseSettings):
     plaid_secret: str = ""
     plaid_env: str = "sandbox"  # sandbox, development, production
     plaid_webhook_url: str = ""
+    dev_allowlist_emails: str = ""  # comma-separated
+    plaid_sandbox_client_id: str = ""
+    plaid_sandbox_secret: str = ""
+
+    @property
+    def dev_emails_set(self) -> set[str]:
+        if not self.dev_allowlist_emails:
+            return set()
+        return {e.strip().lower() for e in self.dev_allowlist_emails.split(",") if e.strip()}
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

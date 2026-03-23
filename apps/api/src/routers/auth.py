@@ -66,7 +66,7 @@ async def register(
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
-        user=UserResponse.from_user(user),
+        user=UserResponse.from_user(user, is_dev=user.email.lower() in settings.dev_emails_set),
     )
 
 
@@ -96,7 +96,7 @@ async def login(
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
-        user=UserResponse.from_user(user),
+        user=UserResponse.from_user(user, is_dev=user.email.lower() in settings.dev_emails_set),
     )
 
 

@@ -30,17 +30,19 @@ class UserResponse(BaseModel):
     name: str
     avatar_url: str | None
     has_mfa: bool = False
+    is_dev: bool = False
 
     model_config = {"from_attributes": True}
 
     @classmethod
-    def from_user(cls, user) -> "UserResponse":
+    def from_user(cls, user, is_dev: bool = False) -> "UserResponse":
         return cls(
             id=user.id,
             email=user.email,
             name=user.name,
             avatar_url=user.avatar_url,
             has_mfa=user.mfa_secret is not None,
+            is_dev=is_dev,
         )
 
 

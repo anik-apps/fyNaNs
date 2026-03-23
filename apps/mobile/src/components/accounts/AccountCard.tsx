@@ -1,9 +1,10 @@
 import React from "react";
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, Alert } from "react-native";
 import { ChevronRight } from "lucide-react-native";
 import { formatCurrency } from "@/src/lib/utils";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { ACCOUNT_TYPE_LABELS, type AccountType } from "@fynans/shared-types";
+import { apiFetch } from "@/src/lib/api-client";
 
 interface AccountCardProps {
   id: string;
@@ -12,7 +13,31 @@ interface AccountCardProps {
   type: AccountType;
   balance: string | number;
   institution_name: string | null;
+  is_manual?: boolean;
+  plaid_item_id?: string | null;
+  last_synced_at?: string | null;
   onPress: (id: string) => void;
+}
+
+const STALE_DAYS = 3;
+
+function formatSyncTime(lastSynced: string | null): { text: string; isStale: boolean } {
+  if (!lastSynced) return { text: "Never synced", isStale: true };
+  const diff = Date.now() - new Date(lastSynced).getTime();
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const days = Math.floor(hours / 24);
+  const isStale = days >= STALE_DAYS;
+  if (days > 0) return { text: `Synced ${days}d ago`, isStale };
+  if (hours > 0) return { text: `Synced ${hours}h ago`, isStale };
+  return { text: "Synced just now", isStale: false };
+}
+
+async function handleSync(plaidItemId: string) {
+  try {
+    await apiFetch(`/api/plaid/items/${plaidItemId}/sync`, { method: "POST" });
+  } catch (e: any) {
+    Alert.alert("Sync Failed", e.message || "Could not sync account");
+  }
 }
 
 const TYPE_BADGE_COLORS: Record<string, { text: string; bg: string }> = {
@@ -30,6 +55,9 @@ export function AccountCard({
   type,
   balance,
   institution_name,
+  is_manual = true,
+  plaid_item_id,
+  last_synced_at,
   onPress,
 }: AccountCardProps) {
   const { theme } = useTheme();
@@ -38,6 +66,7 @@ export function AccountCard({
     bg: theme.colors.surface,
   };
   const isLiability = type === "credit" || type === "loan";
+  const syncInfo = formatSyncTime(last_synced_at ?? null);
 
   return (
     <TouchableOpacity
@@ -48,13 +77,32 @@ export function AccountCard({
       <View style={styles.row}>
         <View style={styles.left}>
           <View style={styles.header}>
-            <Text style={[styles.name, { color: theme.colors.text }]}>
-              {name}
-            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Text style={[styles.name, { color: theme.colors.text }]}>
+                {name}
+              </Text>
+              {!is_manual && (
+                <Text style={styles.linkedBadge}>LINKED</Text>
+              )}
+            </View>
             {institution_name && (
               <Text style={[styles.institution, { color: theme.colors.textSecondary }]}>
                 {institution_name}
               </Text>
+            )}
+            {!is_manual && (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 }}>
+                <Text style={{ fontSize: 10, color: syncInfo.isStale ? "#f59e0b" : "#22c55e" }}>●</Text>
+                <Text style={{ fontSize: 10, color: "#888" }}>{syncInfo.text}</Text>
+                {syncInfo.isStale && plaid_item_id && (
+                  <TouchableOpacity onPress={() => handleSync(plaid_item_id)}>
+                    <Text style={{ fontSize: 10, color: "#0a85ea", marginLeft: 4 }}>↻ Sync</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+            {is_manual && (
+              <Text style={{ fontSize: 10, color: "#888", marginTop: 2 }}>Manual</Text>
             )}
           </View>
           <View style={[styles.badge, { backgroundColor: badgeColors.bg }]}>
@@ -109,4 +157,16 @@ const styles = StyleSheet.create({
   badgeText: { fontSize: 11, fontWeight: "500" },
   right: { flexDirection: "row", alignItems: "center", gap: 4 },
   balance: { fontSize: 18, fontWeight: "bold" },
+  linkedBadge: {
+    fontSize: 7,
+    fontWeight: "600",
+    color: "#1d4ed8",
+    backgroundColor: "#dbeafe",
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 3,
+    overflow: "hidden",
+    textTransform: "uppercase",
+    marginLeft: 4,
+  },
 });

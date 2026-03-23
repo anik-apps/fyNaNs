@@ -34,28 +34,32 @@ class PlaidServiceError(Exception):
         self.status_code = status_code
 
 
-@lru_cache(maxsize=1)
-def _get_plaid_client() -> plaid_api.PlaidApi:
+@lru_cache(maxsize=2)
+def get_plaid_client(environment: str = "") -> plaid_api.PlaidApi:
+    """Get a Plaid API client for the given environment. Cached per environment."""
+    env = environment or settings.plaid_env
     env_map = {
         "sandbox": plaid.Environment.Sandbox,
         # Our plaid-python SDK only exposes Sandbox + Production
         "development": plaid.Environment.Sandbox,
         "production": plaid.Environment.Production,
     }
+    if env == "sandbox" and settings.plaid_sandbox_client_id and settings.plaid_sandbox_secret:
+        client_id = settings.plaid_sandbox_client_id
+        secret = settings.plaid_sandbox_secret
+    else:
+        client_id = settings.plaid_client_id
+        secret = settings.plaid_secret
     configuration = plaid.Configuration(
-        host=env_map.get(settings.plaid_env, plaid.Environment.Sandbox),
-        api_key={
-            "clientId": settings.plaid_client_id,
-            "secret": settings.plaid_secret,
-        },
+        host=env_map.get(env, plaid.Environment.Sandbox),
+        api_key={"clientId": client_id, "secret": secret},
     )
-    api_client = plaid.ApiClient(configuration)
-    return plaid_api.PlaidApi(api_client)
+    return plaid_api.PlaidApi(plaid.ApiClient(configuration))
 
 
-async def create_link_token(user_id: uuid.UUID) -> dict:
+async def create_link_token(user_id: uuid.UUID, environment: str = "") -> dict:
     """Create a Plaid Link token for the frontend."""
-    client = _get_plaid_client()
+    client = get_plaid_client(environment)
 
     kwargs = {
         "user": LinkTokenCreateRequestUser(client_user_id=str(user_id)),
@@ -82,12 +86,13 @@ async def exchange_public_token(
     public_token: str,
     institution_id: str,
     institution_name: str,
+    environment: str = "",
 ) -> tuple[PlaidItem, int]:
     """Exchange public token for access token, create PlaidItem and Accounts.
 
     Returns (plaid_item, num_accounts_linked).
     """
-    client = _get_plaid_client()
+    client = get_plaid_client(environment)
 
     # Exchange public token
     exchange_request = ItemPublicTokenExchangeRequest(public_token=public_token)
@@ -111,6 +116,7 @@ async def exchange_public_token(
         access_token=encrypted_token,
         item_id=item_id,
         institution_name=institution_name,
+        environment=environment or settings.plaid_env,
         status="active",
     )
     db.add(plaid_item)
@@ -368,7 +374,7 @@ async def sync_transactions(
 
     Uses stored cursor for incremental sync. Returns stats dict with added/modified/removed counts.
     """
-    client = _get_plaid_client()
+    client = get_plaid_client(plaid_item.environment)
     access_token = decrypt_value(plaid_item.access_token)
 
     added_count = 0
@@ -494,7 +500,7 @@ async def sync_liabilities(
     Updates account balances and returns bill-relevant data.
     Only called for PlaidItems that have credit card accounts.
     """
-    client = _get_plaid_client()
+    client = get_plaid_client(plaid_item.environment)
     access_token = decrypt_value(plaid_item.access_token)
 
     liab_request = LiabilitiesGetRequest(access_token=access_token)
@@ -613,7 +619,7 @@ async def _get_webhook_verification_key(key_id: str) -> dict | None:
 
         # Fetch from Plaid
         try:
-            client = _get_plaid_client()
+            client = get_plaid_client()
             from plaid.model.webhook_verification_key_get_request import (
                 WebhookVerificationKeyGetRequest,
             )
@@ -673,6 +679,9 @@ async def handle_webhook_event(
 
 # Fallback sync interval: 3 days instead of daily to conserve API quota
 FALLBACK_SYNC_INTERVAL = timedelta(days=3)
+
+# Minimum interval between manual syncs to prevent abuse
+MIN_SYNC_INTERVAL = timedelta(minutes=5)
 
 # Skip fallback sync if webhook-driven sync happened within this window
 WEBHOOK_RECENT_THRESHOLD = timedelta(hours=24)
