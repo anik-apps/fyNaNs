@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.config import settings
 from src.core.database import get_db
 from src.models.account import Account
 from src.models.plaid_item import PlaidItem
@@ -31,7 +32,10 @@ router = APIRouter(prefix="/plaid", tags=["plaid"])
 @router.post("/link-token", response_model=LinkTokenResponse)
 async def create_link(user: User = Depends(get_current_user)):
     try:
-        result = await create_link_token(user.id)
+        environment = ""
+        if user.email.lower() in settings.dev_emails_set and user.use_plaid_sandbox:
+            environment = "sandbox"
+        result = await create_link_token(user.id, environment=environment)
         return result
     except Exception as e:
         import logging
@@ -47,9 +51,13 @@ async def exchange_token(
     db: AsyncSession = Depends(get_db),
 ):
     try:
+        environment = ""
+        if user.email.lower() in settings.dev_emails_set and user.use_plaid_sandbox:
+            environment = "sandbox"
         plaid_item, num_accounts = await exchange_public_token(
             db, user.id, request.public_token,
             request.institution_id, request.institution_name,
+            environment=environment,
         )
         return ExchangeTokenResponse(
             plaid_item_id=plaid_item.id,
