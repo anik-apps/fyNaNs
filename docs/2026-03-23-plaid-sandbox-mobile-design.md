@@ -77,10 +77,19 @@ Body: { "enabled": true }
 
 This endpoint:
 - Verifies the user is in the dev allowlist (403 otherwise)
-- Stores the sandbox preference per-user (in a `dev_settings` table or a field on the user model)
-- Returns the current state
+- Stores the sandbox preference as a `use_plaid_sandbox: bool = False` column on the User model (simpler than a separate table for a single field)
+- Returns the current state: `{ "enabled": true/false }`
 
-When `POST /api/plaid/link-token` is called, the backend checks the user's sandbox preference (if they're dev-allowlisted) and selects the appropriate Plaid client. No sandbox flag is sent from the client.
+Also add a read endpoint:
+
+```
+GET /api/dev/sandbox-toggle
+Response: { "enabled": true/false }
+```
+
+This lets the mobile dev settings screen read the current state on mount.
+
+When `POST /api/plaid/link-token` is called, the backend checks the user's `use_plaid_sandbox` preference (if they're dev-allowlisted) and selects the appropriate Plaid client. No sandbox flag is sent from the client.
 
 ### 4. Dual Plaid Client Support
 
@@ -90,6 +99,7 @@ Required changes:
 - Add separate env vars: `PLAID_SANDBOX_CLIENT_ID` and `PLAID_SANDBOX_SECRET` to `config.py`
 - Replace `_get_plaid_client()` with a factory that accepts an environment parameter and caches per-environment (`@lru_cache` keyed by env string, `maxsize=2`)
 - `create_link_token()` signature changes to accept environment and select the appropriate client
+- All service functions operating on an existing PlaidItem (`exchange_public_token`, `sync_transactions`, `sync_liabilities`, etc.) must derive the environment from `PlaidItem.environment`, not from the user's current toggle. This ensures sandbox items always use sandbox credentials and production items always use production credentials, regardless of the user's current toggle state.
 - Add a safety check: refuse sandbox mode when `PLAID_ENV == "production"` (belt and suspenders)
 
 ### 5. PlaidItem Environment Tracking
@@ -102,7 +112,7 @@ Add `last_synced_at: datetime | None` to `AccountResponse` in `apps/api/src/sche
 
 ### 7. Sync Rate Limiting
 
-Add a minimum interval between manual syncs (5 minutes). The `POST /api/plaid/items/{item_id}/sync` endpoint should check `last_synced_at` and return 429 if synced too recently. The 3-day "stale" threshold for UI display is derived from the backend's `FALLBACK_SYNC_INTERVAL = timedelta(days=3)` constant — the mobile app should reference this via a shared config or API response, not hardcode it.
+Add a named constant `MIN_SYNC_INTERVAL = timedelta(minutes=5)` for the minimum interval between manual syncs. The `POST /api/plaid/items/{item_id}/sync` endpoint should check `last_synced_at` and return 429 if synced too recently. The 3-day "stale" threshold for UI display is derived from the backend's `FALLBACK_SYNC_INTERVAL = timedelta(days=3)` constant. Both intervals should be exposed via a config API or included in the account response so the mobile app doesn't hardcode them.
 
 ## Mobile App Changes
 
@@ -197,7 +207,8 @@ Adding `last_synced_at` to `AccountResponse` (see Backend Changes §6) provides 
 | `src/models/plaid_item.py` | Add `environment: str` column |
 | `src/services/plaid.py` | Dual-client factory, environment-aware `create_link_token()` |
 | `src/routers/plaid.py` | Pass environment to `create_link_token()` based on user's dev settings |
-| `src/routers/dev.py` | New — `POST /api/dev/sandbox-toggle` (dev-allowlisted users only) |
+| `src/models/user.py` | Add `use_plaid_sandbox: bool = False` column |
+| `src/routers/dev.py` | New — `GET/POST /api/dev/sandbox-toggle` (dev-allowlisted users only) |
 
 ### Mobile (apps/mobile/)
 | File | Change |
