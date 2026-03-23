@@ -15,6 +15,7 @@ export interface AuthUser {
   name: string;
   avatar_url: string | null;
   has_mfa: boolean;
+  is_dev: boolean;
 }
 
 interface AuthContextType {
