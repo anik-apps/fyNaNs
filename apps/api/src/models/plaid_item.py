@@ -19,6 +19,7 @@ class PlaidItem(BaseModel):
     institution_name: Mapped[str] = mapped_column(String(255), nullable=False)
     cursor: Mapped[str | None] = mapped_column(String(500), nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+    environment: Mapped[str] = mapped_column(String(20), default="production", server_default="production")
     last_synced_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
