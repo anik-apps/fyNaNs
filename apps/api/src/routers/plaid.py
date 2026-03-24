@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import uuid
 from datetime import UTC, datetime
 
@@ -28,6 +29,8 @@ from src.services.plaid import (
     verify_plaid_webhook,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/plaid", tags=["plaid"])
 
 
@@ -40,9 +43,7 @@ async def create_link(user: User = Depends(get_current_user)):
         result = await create_link_token(user.id, environment=environment)
         return result
     except Exception as e:
-        import logging
-
-        logging.getLogger(__name__).error("Failed to create link token: %s", e)
+        logger.error("Failed to create link token: %s", e)
         raise HTTPException(status_code=500, detail="Failed to create link token") from e
 
 
@@ -127,13 +128,11 @@ async def sync_plaid_item(
     db: AsyncSession = Depends(get_db),
 ):
     """Manually trigger a transaction sync for a linked Plaid item."""
-    import uuid as uuid_mod
-
     from src.services.plaid import has_credit_accounts, sync_liabilities, sync_transactions
 
     result = await db.execute(
         select(PlaidItem).where(
-            PlaidItem.id == uuid_mod.UUID(item_id),
+            PlaidItem.id == uuid.UUID(item_id),
             PlaidItem.user_id == user.id,
         )
     )
@@ -195,8 +194,7 @@ async def sync_all_items(
             if await has_credit_accounts(db, item):
                 await sync_liabilities(db, item)
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning("Sync failed for item %s: %s", item.id, e)
+            logger.warning("Sync failed for item %s: %s", item.id, e)
             continue
 
     return total
@@ -231,7 +229,7 @@ async def delete_plaid_item(
         client = get_plaid_client(plaid_item.environment)
         await asyncio.to_thread(client.item_remove, ItemRemoveRequest(access_token=access_token))
     except Exception:
-        pass  # Log but proceed -- orphaned tokens expire naturally
+        logger.warning("Failed to revoke Plaid token", exc_info=True)
 
     accounts_result = await db.execute(
         select(Account).where(Account.plaid_item_id == plaid_item.id)
