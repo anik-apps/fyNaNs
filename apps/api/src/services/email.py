@@ -1,14 +1,15 @@
+import logging
+
 import resend
 
 from src.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 def send_password_reset_email(to_email: str, reset_token: str) -> None:
     if not settings.resend_api_key:
         # Dev mode: log that email would be sent, without exposing the token
-        import logging
-
-        logger = logging.getLogger(__name__)
         logger.info("[DEV] Password reset email would be sent to %s", to_email)
         return
 
@@ -27,9 +28,6 @@ def send_password_reset_email(to_email: str, reset_token: str) -> None:
 def send_export_email(to_email: str, zip_data: bytes) -> None:
     """Send data export download link via email."""
     if not settings.resend_api_key:
-        import logging
-
-        logger = logging.getLogger(__name__)
         logger.info(
             "[DEV] Export generated for %s (%d bytes)", to_email, len(zip_data)
         )
@@ -37,9 +35,6 @@ def send_export_email(to_email: str, zip_data: bytes) -> None:
 
     # In production: upload zip_data to OCI Object Storage,
     # generate a signed URL, and email it.
-    import logging
-
-    logger = logging.getLogger(__name__)
     logger.info(
         "[DEV] Export generated for %s (%d bytes)", to_email, len(zip_data)
     )
