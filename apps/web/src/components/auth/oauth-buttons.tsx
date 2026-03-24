@@ -7,13 +7,15 @@ import { useState } from "react";
 export function OAuthButtons() {
   const { loginWithOAuth } = useAuth();
   const [isLoading, setIsLoading] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleGoogleLogin() {
     setIsLoading("google");
+    setError(null);
     try {
       const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
       if (!googleClientId) {
-        console.error("Google client ID not configured");
+        setError("Google login is not configured");
         return;
       }
 
@@ -31,7 +33,7 @@ export function OAuthButtons() {
           }
         | undefined;
       if (!google) {
-        console.error("Google SDK not loaded");
+        setError("Google SDK failed to load. Please refresh and try again.");
         return;
       }
 
@@ -43,7 +45,7 @@ export function OAuthButtons() {
       });
       google.accounts.id.prompt();
     } catch (error) {
-      console.error("Google login failed:", error);
+      setError(error instanceof Error ? error.message : "Google login failed");
     } finally {
       setIsLoading(null);
     }
@@ -64,11 +66,15 @@ export function OAuthButtons() {
         className="w-full"
         disabled={isLoading !== null}
         onClick={() => {
-          console.log("Apple Sign In not yet configured");
+          // TODO: implement Apple Sign In
+          setError("Apple Sign In is not yet available.");
         }}
       >
         {isLoading === "apple" ? "Connecting..." : "Continue with Apple"}
       </Button>
+      {error && (
+        <p className="text-xs text-destructive text-center">{error}</p>
+      )}
     </div>
   );
 }

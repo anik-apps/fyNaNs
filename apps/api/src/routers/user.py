@@ -1,3 +1,4 @@
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -22,6 +23,8 @@ from src.schemas.user import (
     SettingsUpdateRequest,
 )
 from src.services.export import generate_export
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/user", tags=["user"])
 
@@ -121,8 +124,7 @@ async def _revoke_plaid_tokens(db: AsyncSession, user_id: uuid.UUID) -> None:
 
             client.item_remove(ItemRemoveRequest(access_token=access_token))
         except Exception:
-            # Log error but proceed -- orphaned tokens expire naturally
-            pass
+            logger.warning("Failed to revoke Plaid token for item %s", item.id, exc_info=True)
 
 
 @router.delete("/account")
