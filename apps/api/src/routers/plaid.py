@@ -1,7 +1,7 @@
 import asyncio
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select
@@ -145,11 +145,14 @@ async def sync_plaid_item(
         raise HTTPException(status_code=400, detail="Item is not active")
 
     if plaid_item.last_synced_at:
-        elapsed = datetime.now(timezone.utc) - plaid_item.last_synced_at
+        elapsed = datetime.now(UTC) - plaid_item.last_synced_at
         if elapsed < MIN_SYNC_INTERVAL:
             raise HTTPException(
                 status_code=429,
-                detail=f"Sync rate limited. Try again in {int((MIN_SYNC_INTERVAL - elapsed).total_seconds())} seconds.",
+                detail=(
+                    "Sync rate limited. Try again in "
+                    f"{int((MIN_SYNC_INTERVAL - elapsed).total_seconds())} seconds."
+                ),
             )
 
     sync_result = await sync_transactions(db, plaid_item)

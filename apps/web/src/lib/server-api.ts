@@ -7,8 +7,7 @@ const SERVER_API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8888
 
 /**
  * Cached per-request function to get an access token.
- * React.cache ensures this only runs once per server request,
- * avoiding multiple refresh calls during SSR.
+ * React.cache ensures this only runs once per server request.
  */
 const getServerAccessToken = cache(async (): Promise<string> => {
   const cookieStore = await cookies();

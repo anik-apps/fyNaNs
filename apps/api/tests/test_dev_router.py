@@ -1,5 +1,7 @@
-import pytest
 from unittest.mock import patch
+
+import pytest
+
 
 @pytest.fixture
 async def dev_auth_headers(client):
@@ -39,7 +41,11 @@ async def test_get_sandbox_toggle_default(mock_settings, client, dev_auth_header
 @patch("src.routers.dev.settings")
 async def test_set_sandbox_toggle(mock_settings, client, dev_auth_headers):
     mock_settings.dev_emails_set = {"devuser@example.com"}
-    resp = await client.post("/api/dev/sandbox-toggle", json={"enabled": True}, headers=dev_auth_headers)
+    resp = await client.post(
+        "/api/dev/sandbox-toggle",
+        json={"enabled": True},
+        headers=dev_auth_headers,
+    )
     assert resp.status_code == 200
     assert resp.json() == {"enabled": True}
 
