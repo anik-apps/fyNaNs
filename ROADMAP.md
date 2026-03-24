@@ -22,6 +22,15 @@
 - [ ] Credit score monitoring
 - [ ] Shared accounts (household/partner finance tracking)
 
+## Tech Debt & Code Quality
+
+- [ ] OAuth account linking: require email verification before linking OAuth to existing account (security risk documented in routers/auth.py)
+- [ ] OCI Object Storage export: implement actual file upload in services/export.py (currently just logs)
+- [ ] Mobile TypeScript strictness: replace ~257 `any` types with proper interfaces across mobile app
+- [ ] Consolidate web/mobile API client patterns (shared retry, error handling)
+- [ ] Add error boundary `componentDidCatch` for production error logging (web)
+- [ ] Plaid OAuth redirect handling for production (required for major US banks)
+
 ## Future Infrastructure
 
 - [ ] Turborepo for JS build orchestration

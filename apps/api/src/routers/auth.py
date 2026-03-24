@@ -177,7 +177,10 @@ async def oauth_login(
     oauth_account = result.scalar_one_or_none()
 
     if oauth_account:
-        user_id = oauth_account.user_id
+        result = await db.execute(select(User).where(User.id == oauth_account.user_id))
+        user = result.scalar_one_or_none()
+        if not user:
+            raise HTTPException(status_code=404, detail="User account not found")
     else:
         # Check if user with this email exists (link accounts)
         # TODO: Security risk — linking OAuth to an existing account by email alone
@@ -203,14 +206,18 @@ async def oauth_login(
         )
         db.add(oauth_acc)
         await db.commit()
-        user_id = user.id
+        await db.refresh(user)
 
     device_info = http_request.headers.get("user-agent", "unknown")
-    access_token, refresh_token = await create_token_pair(db, user_id, device_info)
+    access_token, refresh_token = await create_token_pair(db, user.id, device_info)
 
     _set_refresh_cookie(response, refresh_token)
 
-    return TokenResponse(access_token=access_token)
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        user=UserResponse.from_user(user, is_dev=user.email.lower() in settings.dev_emails_set),
+    )
 
 
 # --- MFA endpoints (Task 12) ---
@@ -314,7 +321,11 @@ async def mfa_verify(
 
     _set_refresh_cookie(response, refresh_token)
 
-    return TokenResponse(access_token=access_token)
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        user=UserResponse.from_user(user, is_dev=user.email.lower() in settings.dev_emails_set),
+    )
 
 
 # --- Password endpoints (Task 13) ---

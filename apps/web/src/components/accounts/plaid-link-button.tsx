@@ -43,7 +43,7 @@ interface PlaidLinkButtonProps {
   onSuccess?: () => void;
 }
 
-function usePlaidScript(): boolean {
+function usePlaidScript(onError: (msg: string) => void): boolean {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -67,21 +67,21 @@ function usePlaidScript(): boolean {
     script.src = "https://cdn.plaid.com/link/v2/stable/link-initialize.js";
     script.async = true;
     script.onload = () => setLoaded(true);
-    script.onerror = () => console.error("Failed to load Plaid Link script");
+    script.onerror = () => onError("Failed to load Plaid");
     document.head.appendChild(script);
 
     return () => {
       // Don't remove the script on unmount -- other components may use it
     };
-  }, []);
+  }, [onError]);
 
   return loaded;
 }
 
 export function PlaidLinkButton({ onSuccess }: PlaidLinkButtonProps) {
-  const plaidReady = usePlaidScript();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const plaidReady = usePlaidScript(setError);
 
   const handleClick = useCallback(async () => {
     if (!window.Plaid) return;

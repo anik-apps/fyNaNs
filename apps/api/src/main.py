@@ -56,7 +56,7 @@ async def lifespan(app):
         scheduler.shutdown()
         logger.info("APScheduler shut down")
     except Exception:
-        pass
+        logger.warning("Scheduler shutdown error", exc_info=True)
 
 
 app = FastAPI(title="fyNaNs API", version="0.1.0", lifespan=lifespan)

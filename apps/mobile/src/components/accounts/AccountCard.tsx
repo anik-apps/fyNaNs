@@ -3,21 +3,16 @@ import { View, Text, StyleSheet, TouchableOpacity, Alert } from "react-native";
 import { ChevronRight } from "lucide-react-native";
 import { formatCurrency } from "@/src/lib/utils";
 import { useTheme } from "@/src/providers/ThemeProvider";
-import { ACCOUNT_TYPE_LABELS, type AccountType } from "@fynans/shared-types";
+import { ACCOUNT_TYPE_LABELS, type Account } from "@fynans/shared-types";
 import { apiFetch } from "@/src/lib/api-client";
 
-interface AccountCardProps {
-  id: string;
-  name: string;
-  official_name: string | null;
-  type: AccountType;
-  balance: string | number;
+type AccountCardProps = Pick<
+  Account,
+  "id" | "name" | "type" | "balance" | "is_manual" | "plaid_item_id" | "last_synced_at"
+> & {
   institution_name: string | null;
-  is_manual?: boolean;
-  plaid_item_id?: string | null;
-  last_synced_at?: string | null;
   onPress: (id: string) => void;
-}
+};
 
 const STALE_DAYS = 3;
 
@@ -51,7 +46,6 @@ const TYPE_BADGE_COLORS: Record<string, { text: string; bg: string }> = {
 export function AccountCard({
   id,
   name,
-  official_name,
   type,
   balance,
   institution_name,
