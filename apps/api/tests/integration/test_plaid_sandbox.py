@@ -128,44 +128,40 @@ class TestPlaidSandboxTransactions:
         assert len(platypus_accounts) > 0
 
     def test_transactions_sync(self, client, plaid_test_user, exchanged_item):
-        """Sandbox should generate test transactions after linking.
+        """Sandbox should have transactions after linking and syncing.
 
-        In CI, Plaid webhooks cannot reach localhost, so we must explicitly
-        trigger a transaction sync before polling for results.
+        In CI, Plaid webhooks cannot reach localhost, so we trigger
+        a manual sync. The 5-minute rate limit means we get one shot.
         """
         item_id = str(exchanged_item["plaid_item_id"])
         headers = plaid_test_user["headers"]
 
-        # Explicitly trigger a sync — Plaid sandbox has transactions
-        # available immediately, but webhooks won't arrive in CI.
-        # Retry the sync a few times since Plaid sandbox may need a
-        # moment after token exchange before transactions are ready.
-        # Trigger sync once — Plaid sandbox may not have transactions
-        # ready immediately after token exchange, so we poll afterwards.
-        # The 5-minute rate limit means we can only sync once; subsequent
-        # calls return 429.
+        # Trigger sync — only one attempt due to 5-min rate limit.
+        # 200 = sync ran, 429 = already synced recently, both OK.
         sync_resp = client.post(
             f"/plaid/items/{item_id}/sync", headers=headers,
         )
-        if sync_resp.status_code == 200:
-            sync_data = sync_resp.json()
-            synced = sync_data.get("added", 0) > 0 or sync_data.get("modified", 0) > 0
-        elif sync_resp.status_code == 429:
-            synced = True  # Already synced
-        else:
-            synced = False
+        sync_ok = sync_resp.status_code in (200, 429)
+        sync_detail = (
+            f"status={sync_resp.status_code} "
+            f"body={sync_resp.text[:200]}"
+        )
 
-        # Poll the transactions endpoint — give Plaid sandbox time
+        # Poll for transactions — sandbox may need time to populate.
         transactions = []
-        for _ in range(15):
+        for _ in range(20):
             resp = client.get("/transactions", headers=headers)
             assert resp.status_code == 200
             data = resp.json()
-            transactions = data if isinstance(data, list) else data.get("items", [])
+            transactions = (
+                data if isinstance(data, list)
+                else data.get("items", [])
+            )
             if transactions:
                 break
             time.sleep(2)
 
         assert len(transactions) > 0, (
-            f"Expected sandbox transactions after sync (sync triggered: {synced})"
+            f"Expected sandbox transactions "
+            f"(sync ok: {sync_ok}, {sync_detail})"
         )
