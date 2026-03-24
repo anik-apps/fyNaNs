@@ -12,7 +12,13 @@ def _unique(prefix: str) -> str:
 class TestBudgets:
     def _get_category_id(self, client, auth_headers):
         """Get a system category ID for budget creation."""
-        categories = client.get("/categories", headers=auth_headers).json()
+        resp = client.get("/categories", headers=auth_headers)
+        assert resp.status_code == 200, f"Failed to fetch categories: {resp.text}"
+        categories = resp.json()
+        assert len(categories) > 0, (
+            "No categories found — the database may not be seeded. "
+            "Run migrations/seeds before integration tests."
+        )
         # Find a leaf category (not a parent)
         for cat in categories:
             if cat["is_system"] and cat.get("parent_id"):
