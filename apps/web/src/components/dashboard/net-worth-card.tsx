@@ -45,7 +45,12 @@ function formatDateLabel(dateStr: string, period: string): string {
   return d.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
 }
 
-function CustomTooltip({ active, payload }: any) {
+interface TooltipProps {
+  active?: boolean;
+  payload?: Array<{ payload: NetWorthPoint }>;
+}
+
+function CustomTooltip({ active, payload }: TooltipProps) {
   if (active && payload?.[0]) {
     const point = payload[0].payload;
     return (
