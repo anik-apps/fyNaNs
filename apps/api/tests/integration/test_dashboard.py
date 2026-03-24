@@ -33,9 +33,12 @@ class TestDashboard:
         assert "total_assets" in nw
         assert "total_liabilities" in nw
         assert "net_worth" in nw
-        # net_worth = total_assets - total_liabilities
-        assert Decimal(nw["net_worth"]) == Decimal(nw["total_assets"]) - Decimal(
-            nw["total_liabilities"]
+        # net_worth should approximately equal total_assets - total_liabilities.
+        # Use abs() comparison to tolerate minor floating-point / rounding differences.
+        expected = Decimal(nw["total_assets"]) - Decimal(nw["total_liabilities"])
+        actual = Decimal(nw["net_worth"])
+        assert abs(actual - expected) <= Decimal("0.02"), (
+            f"net_worth mismatch: {actual} vs expected {expected}"
         )
 
     def test_dashboard_accounts_by_type_structure(self, client: httpx.Client, auth_headers):

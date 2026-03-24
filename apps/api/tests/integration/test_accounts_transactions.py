@@ -1,5 +1,7 @@
 """Integration tests for accounts, transactions, and categories."""
 
+import uuid
+
 import httpx
 
 
@@ -109,16 +111,14 @@ class TestAccounts:
 
 class TestTransactions:
     def _get_or_create_account(self, client, auth_headers):
-        """Get first account or create one."""
-        accounts = client.get("/accounts", headers=auth_headers).json()
-        if accounts:
-            return accounts[0]["id"]
+        """Always create a fresh account to avoid order dependencies."""
         resp = client.post("/accounts", headers=auth_headers, json={
-            "name": "Txn Test Account",
+            "name": f"Txn Test Account {uuid.uuid4().hex[:6]}",
             "type": "checking",
             "balance": "5000.00",
             "institution_name": "Test Bank",
         })
+        assert resp.status_code == 201, f"Account creation failed: {resp.text}"
         return resp.json()["id"]
 
     def test_create_manual_transaction(self, client: httpx.Client, auth_headers):
@@ -171,8 +171,8 @@ class TestTransactions:
         assert resp.status_code == 200
         # Should find the coffee shop transaction
         items = resp.json()["items"]
-        if items:
-            assert any("Coffee" in t["description"] for t in items)
+        assert len(items) > 0, "Expected search for 'Coffee' to return results"
+        assert any("Coffee" in t["description"] for t in items)
 
     def test_update_transaction(self, client: httpx.Client, auth_headers):
         account_id = self._get_or_create_account(client, auth_headers)

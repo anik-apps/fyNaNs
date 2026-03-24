@@ -170,7 +170,12 @@ def test_mfa_setup_confirm_login_flow(client: httpx.Client):
     secret = setup_resp.json()["secret"]
     assert "otpauth_uri" in setup_resp.json()
 
-    # Confirm MFA with TOTP code
+    # Confirm MFA with TOTP code.
+    # TOTP window risk: if this code is generated at the very end of a 30s
+    # window, the confirm request may arrive in the next window. The server
+    # uses valid_window=1, so the previous window is still accepted, but in
+    # the worst case two consecutive calls could span 3 windows. Regenerate
+    # the code immediately before each use to minimise this risk.
     totp = pyotp.TOTP(secret)
     confirm_resp = client.post("/auth/mfa/confirm", headers=headers, json={
         "code": totp.now()
@@ -185,10 +190,8 @@ def test_mfa_setup_confirm_login_flow(client: httpx.Client):
     assert login2.json()["mfa_required"] is True
     mfa_token = login2.json()["mfa_token"]
 
-    # The server allows same TOTP code within its validity window (valid_window=1,
-    # meaning current + previous + next 30s window). No need to wait for a new code.
-
-    # Verify MFA
+    # Regenerate TOTP code right before verification to avoid reusing a
+    # code that may have been consumed or drifted out of the valid window.
     verify_resp = client.post("/auth/mfa/verify",
                               headers={"Authorization": f"Bearer {mfa_token}"},
                               json={"code": totp.now()})
