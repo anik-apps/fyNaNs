@@ -14,6 +14,7 @@ import { EmptyState } from "@/src/components/shared/EmptyState";
 import { ErrorView } from "@/src/components/shared/ErrorView";
 import { useApi } from "@/src/hooks/useApi";
 import { apiFetch } from "@/src/lib/api-client";
+import { type Account } from "@fynans/shared-types";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { createLinkToken, openPlaidLink } from "@/src/lib/plaid";
 
@@ -22,7 +23,7 @@ export default function AccountsScreen() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
 
-  const { data, isLoading, error, refresh } = useApi<any[]>(() =>
+  const { data, isLoading, error, refresh } = useApi<Account[]>(() =>
     apiFetch("/api/accounts")
   );
 
