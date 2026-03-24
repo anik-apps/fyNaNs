@@ -177,9 +177,10 @@ async def oauth_login(
     oauth_account = result.scalar_one_or_none()
 
     if oauth_account:
-        user_id = oauth_account.user_id
-        result = await db.execute(select(User).where(User.id == user_id))
+        result = await db.execute(select(User).where(User.id == oauth_account.user_id))
         user = result.scalar_one_or_none()
+        if not user:
+            raise HTTPException(status_code=404, detail="User account not found")
     else:
         # Check if user with this email exists (link accounts)
         # TODO: Security risk — linking OAuth to an existing account by email alone
