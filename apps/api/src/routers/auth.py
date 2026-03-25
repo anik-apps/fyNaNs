@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
 from src.core.database import get_db
+from src.core.metrics import AUTH_LOGIN_FAILURES, AUTH_LOGINS, AUTH_SIGNUPS
 from src.core.rate_limit import rate_limit_login, rate_limit_mfa_verify, rate_limit_password_reset
 from src.core.security import create_mfa_pending_token
 from src.models.refresh_token import RefreshToken
@@ -58,6 +59,7 @@ async def register(
     except AuthError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message) from None
 
+    AUTH_SIGNUPS.inc()
     device_info = http_request.headers.get("user-agent", "unknown")
     access_token, refresh_token = await create_token_pair(db, user.id, device_info)
 
@@ -81,6 +83,7 @@ async def login(
     try:
         user = await authenticate_user(db, request.email, request.password)
     except AuthError as e:
+        AUTH_LOGIN_FAILURES.inc()
         raise HTTPException(status_code=e.status_code, detail=e.message) from None
 
     # If MFA is enabled, return a short-lived MFA token instead of full tokens
@@ -90,6 +93,7 @@ async def login(
 
     device_info = http_request.headers.get("user-agent", "unknown")
     access_token, refresh_token = await create_token_pair(db, user.id, device_info)
+    AUTH_LOGINS.inc()
 
     _set_refresh_cookie(response, refresh_token)
 
