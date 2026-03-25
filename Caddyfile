@@ -8,6 +8,11 @@
 import /etc/caddy/sites/*.caddy
 
 {$DOMAIN} {
+    # Block /metrics from external access — only Alloy (internal network) can reach it
+    handle /metrics {
+        respond 403
+    }
+
     # API routes -> FastAPI backend
     # FastAPI uses an APIRouter with prefix="/api", so all backend
     # endpoints are under /api/*
