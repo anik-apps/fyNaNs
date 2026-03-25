@@ -5,6 +5,8 @@
     # acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
 }
 
+import /etc/caddy/sites/*.caddy
+
 {$DOMAIN} {
     # API routes -> FastAPI backend
     # FastAPI uses an APIRouter with prefix="/api", so all backend
