@@ -7,7 +7,10 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
 from src.core.config import settings
+from src.core.logging_config import setup_json_logging
 from src.core.rate_limit import GENERAL_RATE_LIMIT, rate_limiter
+from src.middleware.metrics import MetricsMiddleware
+from src.middleware.request_logging import RequestLoggingMiddleware
 from src.routers import (
     accounts,
     auth,
@@ -23,12 +26,16 @@ from src.routers import (
     transactions,
     user,
 )
+from src.routers import (
+    metrics as metrics_router,
+)
 
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app):
+    setup_json_logging()
     # Startup: seed system categories
     try:
         from src.core.database import async_session_factory
@@ -65,7 +72,7 @@ app = FastAPI(title="fyNaNs API", version="0.1.0", lifespan=lifespan)
 class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         # Skip rate limiting for health check
-        if request.url.path in ("/api/health", "/api/plaid/webhook"):
+        if request.url.path in ("/api/health", "/api/plaid/webhook", "/metrics"):
             return await call_next(request)
 
         # Per-IP general rate limit (100/min)
@@ -89,6 +96,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(MetricsMiddleware)  # Last = outermost
 
 api_router = APIRouter(prefix="/api")
 api_router.include_router(health.router)
@@ -105,3 +114,4 @@ api_router.include_router(device_tokens.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(dev.router)
 app.include_router(api_router)
+app.include_router(metrics_router.router)
