@@ -113,7 +113,7 @@ services:
           memory: 512M
 
   alloy:
-    image: grafana/alloy:v1.8
+    image: grafana/alloy:v1.15.0
     restart: unless-stopped
     depends_on:
       api:
