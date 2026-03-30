@@ -128,16 +128,20 @@ jobs:
           docker compose -f docker-compose.prod.yml --env-file .env.production ps
 
       - name: Provision Grafana dashboards
-        if: secrets.GRAFANA_CLOUD_API_KEY != ''
+        if: ${{ secrets.GRAFANA_CLOUD_URL != '' }}
+        env:
+          GC_URL: ${{ secrets.GRAFANA_CLOUD_URL }}
+          GC_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
         run: |
           for f in grafana/dashboards/*.json; do
             [ -f "$f" ] || continue
             TITLE=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['title'])" "$f")
             echo "Provisioning dashboard: $TITLE"
+            PAYLOAD=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(json.dumps({'dashboard': d, 'overwrite': True}))" "$f")
             curl -sf -X POST \
-              -H "Authorization: Bearer ${{ secrets.GRAFANA_CLOUD_API_KEY }}" \
+              -H "Authorization: Bearer $GC_KEY" \
               -H "Content-Type: application/json" \
-              -d "{\"dashboard\": $(cat "$f"), \"overwrite\": true}" \
-              "${{ secrets.GRAFANA_CLOUD_URL }}/api/dashboards/db" \
+              -d "$PAYLOAD" \
+              "$GC_URL/api/dashboards/db" \
               && echo " -> OK" || echo " -> FAILED (non-fatal)"
           done
