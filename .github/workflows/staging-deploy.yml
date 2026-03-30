@@ -95,6 +95,8 @@ jobs:
         run: |
           cp docker-compose.prod.yml /opt/fynans/
           cp Caddyfile /opt/fynans/
+          # Clean up stale directory created by Docker when file was missing
+          rm -rf /opt/fynans/alloy-config.alloy
           cp alloy-config.alloy /opt/fynans/
           cp -r caddy-sites /opt/fynans/
 
