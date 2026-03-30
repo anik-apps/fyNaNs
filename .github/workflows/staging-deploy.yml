@@ -80,6 +80,11 @@ jobs:
           RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
           LOGIN_RATE_LIMIT=5
           GENERAL_RATE_LIMIT=100
+          GRAFANA_CLOUD_PROMETHEUS_URL=${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
+          GRAFANA_CLOUD_LOKI_URL=${{ secrets.GRAFANA_CLOUD_LOKI_URL }}
+          GRAFANA_CLOUD_PROM_USER=${{ secrets.GRAFANA_CLOUD_PROM_USER }}
+          GRAFANA_CLOUD_LOKI_USER=${{ secrets.GRAFANA_CLOUD_LOKI_USER }}
+          GRAFANA_CLOUD_API_KEY=${{ secrets.GRAFANA_CLOUD_API_KEY }}
           API_IMAGE=${{ env.IMAGE_PREFIX }}-api:staging-${{ github.sha }}
           WEB_IMAGE=${{ env.IMAGE_PREFIX }}-web:staging-${{ github.sha }}
           DOMAIN=${{ secrets.DOMAIN }}
@@ -90,6 +95,10 @@ jobs:
         run: |
           cp docker-compose.prod.yml /opt/fynans/
           cp Caddyfile /opt/fynans/
+          # Clean up stale directory created by Docker when file was missing
+          rm -rf /opt/fynans/alloy-config.alloy
+          cp alloy-config.alloy /opt/fynans/
+          mkdir -p /opt/fynans/caddy-sites
 
       - name: Deploy to OCI
         run: |

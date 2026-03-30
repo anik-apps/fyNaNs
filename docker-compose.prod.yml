@@ -113,7 +113,7 @@ services:
           memory: 512M
 
   alloy:
-    image: grafana/alloy:v1.8
+    image: grafana/alloy:v1.15.0
     restart: unless-stopped
     depends_on:
       api:
@@ -125,7 +125,8 @@ services:
     environment:
       GRAFANA_CLOUD_PROMETHEUS_URL: ${GRAFANA_CLOUD_PROMETHEUS_URL}
       GRAFANA_CLOUD_LOKI_URL: ${GRAFANA_CLOUD_LOKI_URL}
-      GRAFANA_CLOUD_USER: ${GRAFANA_CLOUD_USER}
+      GRAFANA_CLOUD_PROM_USER: ${GRAFANA_CLOUD_PROM_USER}
+      GRAFANA_CLOUD_LOKI_USER: ${GRAFANA_CLOUD_LOKI_USER}
       GRAFANA_CLOUD_API_KEY: ${GRAFANA_CLOUD_API_KEY}
     command: run /etc/alloy/config.alloy
     networks:

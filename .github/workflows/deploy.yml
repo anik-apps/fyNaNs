@@ -69,7 +69,8 @@ jobs:
           GENERAL_RATE_LIMIT=100
           GRAFANA_CLOUD_PROMETHEUS_URL=${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
           GRAFANA_CLOUD_LOKI_URL=${{ secrets.GRAFANA_CLOUD_LOKI_URL }}
-          GRAFANA_CLOUD_USER=${{ secrets.GRAFANA_CLOUD_USER }}
+          GRAFANA_CLOUD_PROM_USER=${{ secrets.GRAFANA_CLOUD_PROM_USER }}
+          GRAFANA_CLOUD_LOKI_USER=${{ secrets.GRAFANA_CLOUD_LOKI_USER }}
           GRAFANA_CLOUD_API_KEY=${{ secrets.GRAFANA_CLOUD_API_KEY }}
           API_IMAGE=${{ env.IMAGE_PREFIX }}-api:${{ github.sha }}
           WEB_IMAGE=${{ env.IMAGE_PREFIX }}-web:${{ github.sha }}
@@ -81,8 +82,9 @@ jobs:
         run: |
           cp docker-compose.prod.yml /opt/fynans/
           cp Caddyfile /opt/fynans/
+          rm -rf /opt/fynans/alloy-config.alloy
           cp alloy-config.alloy /opt/fynans/
-          cp -r caddy-sites /opt/fynans/
+          mkdir -p /opt/fynans/caddy-sites
 
       - name: Deploy
         run: |
@@ -128,11 +130,14 @@ jobs:
           docker compose -f docker-compose.prod.yml --env-file .env.production ps
 
       - name: Provision Grafana dashboards
-        if: ${{ secrets.GRAFANA_CLOUD_URL != '' }}
         env:
           GC_URL: ${{ secrets.GRAFANA_CLOUD_URL }}
-          GC_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+          GC_KEY: ${{ secrets.GRAFANA_DASHBOARD_TOKEN }}
         run: |
+          if [ -z "$GC_URL" ] || [ -z "$GC_KEY" ]; then
+            echo "Grafana Cloud secrets not set — skipping dashboard provisioning"
+            exit 0
+          fi
           for f in grafana/dashboards/*.json; do
             [ -f "$f" ] || continue
             TITLE=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['title'])" "$f")
