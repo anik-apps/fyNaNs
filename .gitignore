@@ -28,6 +28,7 @@ Thumbs.db
 
 # Planning and design docs (local only)
 docs/superpowers/
+docs/*-plan.md
 
 # Superpowers brainstorm artifacts
 .superpowers/
