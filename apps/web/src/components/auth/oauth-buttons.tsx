@@ -63,14 +63,14 @@ export function OAuthButtons() {
       </Button>
       <Button
         variant="outline"
-        className="w-full"
-        disabled={isLoading !== null}
-        onClick={() => {
-          // TODO: implement Apple Sign In
-          setError("Apple Sign In is not yet available.");
-        }}
+        className="w-full opacity-50 cursor-not-allowed"
+        disabled
+        aria-disabled="true"
       >
-        {isLoading === "apple" ? "Connecting..." : "Continue with Apple"}
+        Continue with Apple{" "}
+        <span className="ml-2 text-xs font-normal text-muted-foreground">
+          Coming Soon
+        </span>
       </Button>
       {error && (
         <p className="text-xs text-destructive text-center">{error}</p>
