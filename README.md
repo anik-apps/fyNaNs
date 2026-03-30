@@ -7,9 +7,11 @@ The name plays on "finances" with an embedded **NaN** (Not a Number) — because
 ## Features
 
 - **Dashboard** — Net worth, account balances, spending summary at a glance
+- **Bank Linking** — Connect accounts via Plaid Link (native SDK on mobile, web modal on desktop)
 - **Transaction Tracking** — Auto-categorized via Plaid, manual import via CSV/OFX
 - **Budgeting** — Per-category budgets with progress tracking
 - **Bill Tracking** — Recurring bills, credit card bills auto-synced from connected accounts
+- **Observability** — Prometheus metrics, structured JSON logging, Grafana Cloud dashboards
 
 ## Tech Stack
 
@@ -22,6 +24,31 @@ The name plays on "finances" with an embedded **NaN** (Not a Number) — because
 | Bank Data | Plaid + CSV/OFX manual import |
 | Hosting | OCI (ARM VM) with Caddy reverse proxy |
 
+## Architecture
+
+### Multi-Service Hosting (OCI VM)
+```
+Internet → Caddy (ports 80/443, auto-TLS via Let's Encrypt)
+             ├── fynans.kumaranik.com/api/*  → FastAPI (internal:8000)
+             ├── fynans.kumaranik.com/*       → Next.js (internal:3000)
+             └── import /etc/caddy/sites/*.caddy  → other services
+```
+New services drop a `.caddy` file in `caddy-sites/` and restart Caddy. No changes to existing configs needed.
+
+### Plaid Integration
+- **Dual environment support** — sandbox + production Plaid clients, cached per-environment
+- **Dev sandbox toggle** — allowlisted users (`DEV_ALLOWLIST_EMAILS`) can switch to Plaid sandbox via `POST /api/dev/sandbox-toggle`
+- **Mobile:** `react-native-plaid-link-sdk` (native modal) | **Web:** Plaid Link CDN script
+- **Sync flow:** exchange token → fetch accounts → sync transactions (cursor-based) → sync liabilities
+- **Rate limiting:** 5-minute minimum between manual syncs, 3-day fallback auto-sync for stale items
+- **PlaidItem.environment** column distinguishes sandbox vs production data
+
+### Observability
+- **Metrics:** `prometheus-client` → `/metrics` endpoint → Grafana Alloy scrapes → Grafana Cloud Prometheus
+- **Logs:** `python-json-logger` → JSON stdout → Alloy tails Docker logs → Grafana Cloud Loki
+- **Dashboards:** JSON files in `grafana/dashboards/`, auto-provisioned on deploy via Grafana Cloud API
+- **Security:** `/metrics` blocked externally via Caddy (403), only reachable on internal Docker network
+
 ## Project Structure
 
 ```
@@ -32,9 +59,14 @@ fyNaNs/
 │   │   │   ├── main.py               # FastAPI app entry point, CORS, rate limit middleware
 │   │   │   ├── core/
 │   │   │   │   ├── config.py         # App settings from env vars (pydantic-settings)
-│   │   │   │   ├── database.py       # Async SQLAlchemy engine + session factory
+│   │   │   │   ├── database.py       # Async SQLAlchemy engine + session factory + query timing events
+│   │   │   │   ├── metrics.py        # Prometheus metric definitions (operational + business)
+│   │   │   │   ├── logging_config.py # Structured JSON logging setup (python-json-logger)
 │   │   │   │   ├── rate_limit.py     # In-memory per-IP rate limiter with proxy-aware IP detection
 │   │   │   │   └── security.py       # Password hashing (bcrypt), JWT encode/decode, AES-256-GCM encryption
+│   │   │   ├── middleware/
+│   │   │   │   ├── metrics.py        # Pure ASGI request metrics middleware (latency, count, in-progress)
+│   │   │   │   └── request_logging.py # Pure ASGI structured request logging
 │   │   │   ├── models/
 │   │   │   │   ├── base.py           # Base model with UUID pk + created_at/updated_at
 │   │   │   │   ├── user.py           # User model (email, password_hash, mfa_secret)
@@ -82,6 +114,8 @@ fyNaNs/
 │   │   │   │   ├── notifications.py  # /api/notifications/* (list, mark read)
 │   │   │   │   ├── device_tokens.py  # /api/device-tokens/* (register, unregister)
 │   │   │   │   ├── dashboard.py      # GET /api/dashboard (aggregated dashboard view)
+│   │   │   │   ├── dev.py            # /api/dev/* (sandbox toggle, dev-only endpoints)
+│   │   │   │   ├── metrics.py        # GET /metrics (Prometheus exposition)
 │   │   │   │   └── deps.py           # FastAPI dependencies (get_current_user, get_db)
 │   │   │   └── jobs/
 │   │   │       ├── scheduler.py      # APScheduler setup with PostgreSQL job store
@@ -118,10 +152,18 @@ fyNaNs/
 │           ├── budgets.ts            # Budget period constants and thresholds
 │           ├── bills.ts              # Bill frequency constants and status helpers
 │           └── constants.ts          # App-wide constants (notifications, theme, pagination)
+├── grafana/
+│   └── dashboards/                   # Grafana dashboard JSON files (auto-provisioned on deploy)
+│       ├── api-overview.json         # Request rate, error rate, latency percentiles
+│       ├── infrastructure.json       # DB pool, query duration, container resources
+│       └── business.json             # Signups, Plaid usage, transaction volume
+├── caddy-sites/                      # Shared Caddy config for multi-service hosting
+├── alloy-config.alloy                # Grafana Alloy scrape/push configuration
 ├── scripts/
 │   ├── seed-categories.py            # Seeds 40+ default transaction categories
 │   └── generate-api-client.sh        # Downloads OpenAPI spec and generates TypeScript client
-└── docker-compose.yml                # Local dev PostgreSQL
+├── docker-compose.yml                # Local dev PostgreSQL
+└── docker-compose.prod.yml           # Production: all services + Caddy + Alloy
 ```
 
 ## Getting Started
