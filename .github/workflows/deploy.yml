@@ -84,7 +84,8 @@ jobs:
           cp Caddyfile /opt/fynans/
           rm -rf /opt/fynans/alloy-config.alloy
           cp alloy-config.alloy /opt/fynans/
-          cp -r caddy-sites /opt/fynans/
+          mkdir -p /opt/fynans/caddy-sites
+          cp caddy-sites/* /opt/fynans/caddy-sites/ 2>/dev/null || true
 
       - name: Deploy
         run: |
