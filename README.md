@@ -19,10 +19,12 @@ The name plays on "finances" with an embedded **NaN** (Not a Number) — because
 |-------|-----------|
 | Backend | Python, FastAPI, SQLAlchemy, Alembic |
 | Database | PostgreSQL |
-| Web | Next.js (React), TypeScript |
-| Mobile | React Native (Expo) |
+| Web | Next.js 15 (React 19), TypeScript |
+| Mobile | React Native (Expo SDK 54) |
 | Bank Data | Plaid + CSV/OFX manual import |
-| Hosting | OCI (ARM VM) with Caddy reverse proxy |
+| Observability | Prometheus, Grafana Cloud (Loki + Alloy) |
+| Hosting | OCI ARM VM (free tier), Docker Compose, Caddy |
+| CI/CD | GitHub Actions, self-hosted ARM runner, GHCR |
 
 ## Architecture
 
@@ -123,23 +125,26 @@ fyNaNs/
 │   │   │       ├── budget_alerts.py  # 6-hourly job: check 80%/100% spend thresholds
 │   │   │       └── fallback_sync.py  # 3-day job: sync stale Plaid items (quota-aware)
 │   │   ├── migrations/               # Alembic async migrations
-│   │   ├── tests/                    # 156 pytest tests + 43 integration tests
+│   │   ├── tests/                    # Unit + integration tests
+│   │   │   ├── integration/         # Integration tests against live API (httpx)
 │   │   │   └── factories.py         # Test data factories for dashboard-related models
-│   ├── web/                          # Next.js frontend — coming in Plan 5
+│   ├── web/                          # Next.js 15 frontend
 │   └── mobile/                       # React Native (Expo) mobile app
 │       ├── app/                      # Expo Router file-based navigation
 │       │   ├── (auth)/               # Auth stack (login, register, MFA, forgot-password)
-│       │   └── (tabs)/               # Bottom tab navigator
-│       │       ├── index.tsx          # Dashboard screen
-│       │       ├── accounts/          # Account list + detail
-│       │       ├── transactions.tsx   # Transactions with search, filters, infinite scroll
-│       │       ├── budgets.tsx        # Budget cards with progress bars
-│       │       ├── bills.tsx          # Bills with status indicators
-│       │       └── settings/          # Profile, security, notifications
+│       │   ├── (tabs)/               # Bottom tab navigator
+│       │   │   ├── index.tsx          # Dashboard screen
+│       │   │   ├── accounts/          # Account list, detail, add (manual + Plaid Link)
+│       │   │   ├── transactions/      # Transactions with search, filters, detail view
+│       │   │   ├── budgets.tsx        # Budget cards with progress bars
+│       │   │   ├── bills.tsx          # Bills with status indicators
+│       │   │   └── settings/          # Profile, security, notifications
+│       │   └── settings/
+│       │       └── dev.tsx            # Dev settings (Plaid sandbox toggle, allowlisted users only)
 │       └── src/
 │           ├── components/            # Reusable UI components per feature
 │           ├── hooks/                 # useAuth, useApi, useBiometric, usePushNotifications
-│           ├── lib/                   # API client, auth storage, utils, theme, constants
+│           ├── lib/                   # API client, auth storage, Plaid Link helper, constants
 │           └── providers/             # AuthProvider, ThemeProvider
 ├── packages/
 │   ├── api-client/                   # Auto-generated TypeScript API client (openapi-ts + @hey-api/client-fetch)
@@ -234,16 +239,29 @@ All secrets are managed in GitHub → Settings → Secrets and variables → Act
 | `PLAID_SECRET` | Plaid API secret | From Plaid dashboard |
 | `PLAID_ENV` | Plaid environment | `sandbox`, `development`, or `production` |
 | `RESEND_API_KEY` | Email service API key | From [Resend](https://resend.com) (optional) |
+| `GRAFANA_CLOUD_PROMETHEUS_URL` | Prometheus remote-write URL | From Grafana Cloud stack details |
+| `GRAFANA_CLOUD_LOKI_URL` | Loki push URL | From Grafana Cloud stack details |
+| `GRAFANA_CLOUD_PROM_USER` | Prometheus instance ID (numeric) | From Grafana Cloud Prometheus details |
+| `GRAFANA_CLOUD_LOKI_USER` | Loki instance ID (numeric) | From Grafana Cloud Loki details |
+| `GRAFANA_CLOUD_API_KEY` | Cloud API key (glc_ token) | From Grafana Cloud → API keys |
+| `GRAFANA_CLOUD_URL` | Grafana instance URL | e.g., `https://anikapps.grafana.net` |
+| `GRAFANA_DASHBOARD_TOKEN` | Grafana instance token (glsa_, Editor role) | From Grafana → Service accounts |
 
 ### How Deployment Works
 
 ```
-Push to main → CI builds ARM64 Docker images → Pushes to GHCR →
-SSHs into VM → Generates .env from secrets → Pulls images →
-SCPs config files → docker compose up → Health check
+Push to main
+  → CI: lint, unit tests, integration tests (mandatory)
+  → Deploy: build ARM64 images on self-hosted runner → push to GHCR
+  → Copy configs (docker-compose, Caddyfile, alloy-config)
+  → Generate .env.production from GitHub secrets
+  → docker compose up → alembic migrate → health check
+  → Provision Grafana dashboards via API
 ```
 
-Nothing persists on the VM except Docker volumes (database data). All config and secrets are delivered fresh on each deploy.
+Nothing persists on the VM except Docker volumes (database data, Caddy certs, Alloy WAL). All config and secrets are delivered fresh on each deploy.
+
+**Staging deploy:** Triggered manually via `workflow_dispatch`. Builds from any branch/PR and deploys to the same VM (replaces production temporarily).
 
 ## License
 
