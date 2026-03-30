@@ -14,7 +14,7 @@ prometheus.remote_write "grafana_cloud" {
   endpoint {
     url = env("GRAFANA_CLOUD_PROMETHEUS_URL")
     basic_auth {
-      username = env("GRAFANA_CLOUD_USER")
+      username = env("GRAFANA_CLOUD_PROM_USER")
       password = env("GRAFANA_CLOUD_API_KEY")
     }
   }
@@ -43,7 +43,7 @@ loki.write "grafana_cloud" {
   endpoint {
     url = env("GRAFANA_CLOUD_LOKI_URL")
     basic_auth {
-      username = env("GRAFANA_CLOUD_USER")
+      username = env("GRAFANA_CLOUD_LOKI_USER")
       password = env("GRAFANA_CLOUD_API_KEY")
     }
   }
