@@ -2,12 +2,29 @@
 
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+function useGoogleSdk() {
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    if (document.querySelector('script[src*="accounts.google.com/gsi"]')) {
+      setLoaded(true);
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.onload = () => setLoaded(true);
+    document.head.appendChild(script);
+  }, []);
+  return loaded;
+}
 
 export function OAuthButtons() {
   const { loginWithOAuth } = useAuth();
   const [isLoading, setIsLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const googleSdkLoaded = useGoogleSdk();
 
   async function handleGoogleLogin() {
     setIsLoading("google");
@@ -40,13 +57,18 @@ export function OAuthButtons() {
       google.accounts.id.initialize({
         client_id: googleClientId,
         callback: async (response: { credential: string }) => {
-          await loginWithOAuth("google", response.credential);
+          try {
+            await loginWithOAuth("google", response.credential);
+          } catch (err) {
+            setError(err instanceof Error ? err.message : "Google login failed");
+          } finally {
+            setIsLoading(null);
+          }
         },
       });
       google.accounts.id.prompt();
     } catch (error) {
       setError(error instanceof Error ? error.message : "Google login failed");
-    } finally {
       setIsLoading(null);
     }
   }
@@ -57,20 +79,19 @@ export function OAuthButtons() {
         variant="outline"
         className="w-full"
         onClick={handleGoogleLogin}
-        disabled={isLoading !== null}
+        disabled={isLoading !== null || !googleSdkLoaded}
       >
-        {isLoading === "google" ? "Connecting..." : "Continue with Google"}
+        {isLoading === "google" ? "Connecting..." : !googleSdkLoaded ? "Loading..." : "Continue with Google"}
       </Button>
       <Button
         variant="outline"
         className="w-full"
-        disabled={isLoading !== null}
-        onClick={() => {
-          // TODO: implement Apple Sign In
-          setError("Apple Sign In is not yet available.");
-        }}
+        disabled
       >
-        {isLoading === "apple" ? "Connecting..." : "Continue with Apple"}
+        Continue with Apple{" "}
+        <span className="ml-2 text-xs font-normal text-muted-foreground">
+          Coming Soon
+        </span>
       </Button>
       {error && (
         <p className="text-xs text-destructive text-center">{error}</p>

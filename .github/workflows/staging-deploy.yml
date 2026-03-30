@@ -53,7 +53,9 @@ jobs:
 
       - name: Build Web image
         run: |
-          docker build -t ${{ env.IMAGE_PREFIX }}-web:staging-${{ github.sha }} \
+          docker build \
+                        --build-arg NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }} \
+                        -t ${{ env.IMAGE_PREFIX }}-web:staging-${{ github.sha }} \
                         -f apps/web/Dockerfile .
 
       - name: Generate .env.production
@@ -78,6 +80,7 @@ jobs:
           APP_URL=https://${{ secrets.DOMAIN }}
           API_URL=https://${{ secrets.DOMAIN }}
           RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
+          GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
           LOGIN_RATE_LIMIT=5
           GENERAL_RATE_LIMIT=100
           GRAFANA_CLOUD_PROMETHEUS_URL=${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
