@@ -57,13 +57,18 @@ export function OAuthButtons() {
       google.accounts.id.initialize({
         client_id: googleClientId,
         callback: async (response: { credential: string }) => {
-          await loginWithOAuth("google", response.credential);
+          try {
+            await loginWithOAuth("google", response.credential);
+          } catch (err) {
+            setError(err instanceof Error ? err.message : "Google login failed");
+          } finally {
+            setIsLoading(null);
+          }
         },
       });
       google.accounts.id.prompt();
     } catch (error) {
       setError(error instanceof Error ? error.message : "Google login failed");
-    } finally {
       setIsLoading(null);
     }
   }
@@ -74,15 +79,14 @@ export function OAuthButtons() {
         variant="outline"
         className="w-full"
         onClick={handleGoogleLogin}
-        disabled={isLoading !== null}
+        disabled={isLoading !== null || !googleSdkLoaded}
       >
-        {isLoading === "google" ? "Connecting..." : "Continue with Google"}
+        {isLoading === "google" ? "Connecting..." : !googleSdkLoaded ? "Loading..." : "Continue with Google"}
       </Button>
       <Button
         variant="outline"
-        className="w-full opacity-50 cursor-not-allowed"
+        className="w-full"
         disabled
-        aria-disabled="true"
       >
         Continue with Apple{" "}
         <span className="ml-2 text-xs font-normal text-muted-foreground">
