@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_db
+from src.core.metrics import BUDGETS_CREATED
 from src.models.budget import Budget
 from src.models.user import User
 from src.routers.deps import get_current_user
@@ -60,6 +61,7 @@ async def create_budget_endpoint(
             amount_limit=request.amount_limit,
             period=request.period,
         )
+        BUDGETS_CREATED.inc()
         return BudgetResponse(
             id=budget.id,
             category_id=budget.category_id,

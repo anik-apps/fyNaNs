@@ -20,6 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
+from src.core.metrics import PLAID_ACCOUNTS_LINKED, PLAID_API_CALLS, PLAID_SYNC, TRANSACTIONS
 from src.core.security import decrypt_value, encrypt_value
 from src.models.account import Account
 from src.models.plaid_item import PlaidItem
@@ -73,6 +74,7 @@ async def create_link_token(user_id: uuid.UUID, environment: str = "") -> dict:
 
     request = LinkTokenCreateRequest(**kwargs)
 
+    PLAID_API_CALLS.inc()
     response = await asyncio.to_thread(client.link_token_create, request)
     return {
         "link_token": response.link_token,
@@ -96,6 +98,7 @@ async def exchange_public_token(
 
     # Exchange public token
     exchange_request = ItemPublicTokenExchangeRequest(public_token=public_token)
+    PLAID_API_CALLS.inc()
     exchange_response = await asyncio.to_thread(client.item_public_token_exchange, exchange_request)
 
     access_token = exchange_response.access_token
@@ -126,6 +129,7 @@ async def exchange_public_token(
     from plaid.model.accounts_get_request import AccountsGetRequest
 
     accounts_request = AccountsGetRequest(access_token=access_token)
+    PLAID_API_CALLS.inc()
     accounts_response = await asyncio.to_thread(client.accounts_get, accounts_request)
 
     account_type_map = {
@@ -192,6 +196,7 @@ async def exchange_public_token(
 
     await db.commit()
     await db.refresh(plaid_item)
+    PLAID_ACCOUNTS_LINKED.inc(num_linked)
     return plaid_item, num_linked
 
 
@@ -388,6 +393,7 @@ async def sync_transactions(
             access_token=access_token,
             cursor=cursor,
         )
+        PLAID_API_CALLS.inc()
         response = await asyncio.to_thread(client.transactions_sync, sync_request)
 
         # Process added transactions
@@ -481,11 +487,17 @@ async def sync_transactions(
         has_more = response.has_more
         cursor = response.next_cursor
 
-    # Update cursor and last_synced_at on PlaidItem
-    plaid_item.cursor = cursor
-    plaid_item.last_synced_at = datetime.now(UTC)
-    await db.commit()
+    try:
+        # Update cursor and last_synced_at on PlaidItem
+        plaid_item.cursor = cursor
+        plaid_item.last_synced_at = datetime.now(UTC)
+        await db.commit()
+    except Exception:
+        PLAID_SYNC.labels(status="failure").inc()
+        raise
 
+    PLAID_SYNC.labels(status="success").inc()
+    TRANSACTIONS.labels(source="plaid").inc(added_count)
     return {"added": added_count, "modified": modified_count, "removed": removed_count}
 
 

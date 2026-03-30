@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_db
+from src.core.metrics import BILLS_CREATED
 from src.models.bill import Bill
 from src.models.user import User
 from src.routers.deps import get_current_user
@@ -74,6 +75,7 @@ async def create_bill_endpoint(
             reminder_days=request.reminder_days,
             is_auto_pay=request.is_auto_pay,
         )
+        BILLS_CREATED.inc()
         return _bill_to_response(bill)
     except BillError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message) from None

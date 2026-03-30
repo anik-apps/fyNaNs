@@ -112,11 +112,35 @@ services:
         limits:
           memory: 512M
 
+  alloy:
+    image: grafana/alloy:v1.8
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    volumes:
+      - ./alloy-config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy_wal:/var/lib/alloy
+    environment:
+      GRAFANA_CLOUD_PROMETHEUS_URL: ${GRAFANA_CLOUD_PROMETHEUS_URL}
+      GRAFANA_CLOUD_LOKI_URL: ${GRAFANA_CLOUD_LOKI_URL}
+      GRAFANA_CLOUD_USER: ${GRAFANA_CLOUD_USER}
+      GRAFANA_CLOUD_API_KEY: ${GRAFANA_CLOUD_API_KEY}
+    command: run /etc/alloy/config.alloy
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+
 volumes:
   pgdata:
   caddy_data:
   caddy_config:
   caddy_logs:
+  alloy_wal:
 
 networks:
   internal:

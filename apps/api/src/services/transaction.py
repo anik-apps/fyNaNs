@@ -7,6 +7,7 @@ from decimal import Decimal
 from sqlalchemy import desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.metrics import TRANSACTIONS
 from src.models.account import Account
 from src.models.transaction import Transaction
 
@@ -50,6 +51,7 @@ async def create_manual_transaction(
     db.add(txn)
     await db.commit()
     await db.refresh(txn)
+    TRANSACTIONS.labels(source="manual").inc()
     return txn
 
 
@@ -218,6 +220,7 @@ async def import_csv(
             errors.append({"row": row_num, "reason": str(e)})
 
     await db.commit()
+    TRANSACTIONS.labels(source="csv").inc(imported)
     return {"imported": imported, "skipped_duplicates": skipped, "errors": errors}
 
 
@@ -274,6 +277,7 @@ async def import_ofx(
                 errors.append({"row": row_num, "reason": str(e)})
 
     await db.commit()
+    TRANSACTIONS.labels(source="ofx").inc(imported)
     return {"imported": imported, "skipped_duplicates": skipped, "errors": errors}
 
 
