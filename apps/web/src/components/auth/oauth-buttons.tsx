@@ -2,12 +2,29 @@
 
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+function useGoogleSdk() {
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    if (document.querySelector('script[src*="accounts.google.com/gsi"]')) {
+      setLoaded(true);
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.onload = () => setLoaded(true);
+    document.head.appendChild(script);
+  }, []);
+  return loaded;
+}
 
 export function OAuthButtons() {
   const { loginWithOAuth } = useAuth();
   const [isLoading, setIsLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const googleSdkLoaded = useGoogleSdk();
 
   async function handleGoogleLogin() {
     setIsLoading("google");
