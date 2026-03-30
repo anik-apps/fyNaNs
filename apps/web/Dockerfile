@@ -40,6 +40,8 @@ RUN mkdir -p apps/web/public
 
 # Build Next.js
 ENV NEXT_TELEMETRY_DISABLED=1
+ARG NEXT_PUBLIC_GOOGLE_CLIENT_ID
+ENV NEXT_PUBLIC_GOOGLE_CLIENT_ID=$NEXT_PUBLIC_GOOGLE_CLIENT_ID
 RUN pnpm --filter @fynans/web build
 
 # Stage 3: Runtime
