@@ -203,6 +203,20 @@ jobs:
           NEXT_PUBLIC_API_URL: http://localhost:8888
           CI: true
 
+      - name: Run visual regression tests
+        working-directory: apps/web
+        run: |
+          if [ -d "e2e/__screenshots__/linux" ]; then
+            pnpm exec playwright test e2e/visual-regression.spec.ts --reporter=list
+          else
+            echo "No Linux baselines found — generating initial snapshots"
+            pnpm exec playwright test e2e/visual-regression.spec.ts --update-snapshots --reporter=list
+            echo "::warning::Visual regression baselines generated for Linux. Commit e2e/__screenshots__/linux/ to lock them in."
+          fi
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8888
+          CI: true
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
@@ -211,3 +225,4 @@ jobs:
           path: |
             apps/api/junit-integration-results.xml
             apps/web/test-results/
+            apps/web/e2e/__screenshots__/
