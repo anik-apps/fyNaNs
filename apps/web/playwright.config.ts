@@ -7,7 +7,13 @@ export default defineConfig({
   workers: 1,
   expect: {
     timeout: 10000,
+    toHaveScreenshot: {
+      maxDiffPixelRatio: 0.01,
+      animations: 'disabled',
+    },
   },
+  snapshotDir: './e2e/__screenshots__',
+  snapshotPathTemplate: '{snapshotDir}/{platform}/{arg}{ext}',
   use: {
     baseURL: 'http://localhost:3000',
     trace: 'on-first-retry',
