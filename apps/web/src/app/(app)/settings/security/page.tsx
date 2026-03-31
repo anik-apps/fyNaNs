@@ -429,10 +429,10 @@ export default function SecurityPage() {
               {sessions.map((session) => (
                 <div
                   key={session.id}
-                  className="flex items-center justify-between p-3 rounded-lg border"
+                  className="flex items-center justify-between gap-2 p-3 rounded-lg border"
                 >
-                  <div>
-                    <p className="text-sm font-medium">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate">
                       {session.device_info}
                       {session.is_current && (
                         <Badge variant="secondary" className="ml-2 text-xs">
