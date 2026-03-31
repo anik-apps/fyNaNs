@@ -2,96 +2,77 @@
 
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
-import { useEffect, useState } from "react";
-
-function useGoogleSdk() {
-  const [loaded, setLoaded] = useState(false);
-  useEffect(() => {
-    if (document.querySelector('script[src*="accounts.google.com/gsi"]')) {
-      setLoaded(true);
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = "https://accounts.google.com/gsi/client";
-    script.async = true;
-    script.onload = () => setLoaded(true);
-    document.head.appendChild(script);
-  }, []);
-  return loaded;
-}
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export function OAuthButtons() {
   const { loginWithOAuth } = useAuth();
-  const [isLoading, setIsLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const googleSdkLoaded = useGoogleSdk();
+  const [sdkReady, setSdkReady] = useState(false);
+  const googleBtnRef = useRef<HTMLDivElement>(null);
 
-  async function handleGoogleLogin() {
-    setIsLoading("google");
-    setError(null);
-    try {
-      const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-      if (!googleClientId) {
-        setError("Google login is not configured");
-        return;
+  const handleCredential = useCallback(
+    async (response: { credential: string }) => {
+      setError(null);
+      try {
+        await loginWithOAuth("google", response.credential);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Google login failed");
       }
+    },
+    [loginWithOAuth],
+  );
 
-      interface PromptNotification {
-        isNotDisplayed: () => boolean;
-        isSkippedMoment: () => boolean;
-        isDismissedMoment: () => boolean;
-      }
-      const google = (window as unknown as Record<string, unknown>).google as
-        | {
-            accounts: {
-              id: {
-                initialize: (config: {
-                  client_id: string;
-                  callback: (response: { credential: string }) => void;
-                }) => void;
-                prompt: (listener?: (notification: PromptNotification) => void) => void;
-              };
-            };
-          }
-        | undefined;
-      if (!google) {
-        setError("Google SDK failed to load. Please refresh and try again.");
-        return;
-      }
+  useEffect(() => {
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+    if (!clientId) return;
+
+    function initGoogle() {
+      const google = (window as unknown as { google?: { accounts: { id: {
+        initialize: (config: Record<string, unknown>) => void;
+        renderButton: (el: HTMLElement, config: Record<string, unknown>) => void;
+      } } } }).google;
+      if (!google || !googleBtnRef.current) return;
 
       google.accounts.id.initialize({
-        client_id: googleClientId,
-        callback: async (response: { credential: string }) => {
-          try {
-            await loginWithOAuth("google", response.credential);
-          } catch (err) {
-            setError(err instanceof Error ? err.message : "Google login failed");
-          } finally {
-            setIsLoading(null);
-          }
-        },
+        client_id: clientId,
+        callback: handleCredential,
       });
-      google.accounts.id.prompt((notification) => {
-        if (notification.isNotDisplayed() || notification.isSkippedMoment() || notification.isDismissedMoment()) {
-          setIsLoading(null);
-        }
+
+      google.accounts.id.renderButton(googleBtnRef.current, {
+        type: "standard",
+        theme: "outline",
+        size: "large",
+        text: "continue_with",
+        width: googleBtnRef.current.offsetWidth,
       });
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "Google login failed");
-      setIsLoading(null);
+
+      setSdkReady(true);
     }
-  }
+
+    // Load SDK if not already loaded
+    if (document.querySelector('script[src*="accounts.google.com/gsi"]')) {
+      initGoogle();
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.onload = initGoogle;
+    document.head.appendChild(script);
+  }, [handleCredential]);
 
   return (
     <div className="space-y-2">
-      <Button
-        variant="outline"
-        className="w-full"
-        onClick={handleGoogleLogin}
-        disabled={isLoading !== null || !googleSdkLoaded}
-      >
-        {isLoading === "google" ? "Connecting..." : !googleSdkLoaded ? "Loading..." : "Continue with Google"}
-      </Button>
+      {!sdkReady && (
+        <Button variant="outline" className="w-full" disabled>
+          Loading...
+        </Button>
+      )}
+      <div
+        ref={googleBtnRef}
+        className={`w-full ${sdkReady ? "" : "hidden"}`}
+      />
       <Button
         variant="outline"
         className="w-full"
