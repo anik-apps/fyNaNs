@@ -36,6 +36,11 @@ export function OAuthButtons() {
         return;
       }
 
+      interface PromptNotification {
+        isNotDisplayed: () => boolean;
+        isSkippedMoment: () => boolean;
+        isDismissedMoment: () => boolean;
+      }
       const google = (window as unknown as Record<string, unknown>).google as
         | {
             accounts: {
@@ -44,7 +49,7 @@ export function OAuthButtons() {
                   client_id: string;
                   callback: (response: { credential: string }) => void;
                 }) => void;
-                prompt: () => void;
+                prompt: (listener?: (notification: PromptNotification) => void) => void;
               };
             };
           }
@@ -66,7 +71,11 @@ export function OAuthButtons() {
           }
         },
       });
-      google.accounts.id.prompt();
+      google.accounts.id.prompt((notification) => {
+        if (notification.isNotDisplayed() || notification.isSkippedMoment() || notification.isDismissedMoment()) {
+          setIsLoading(null);
+        }
+      });
     } catch (error) {
       setError(error instanceof Error ? error.message : "Google login failed");
       setIsLoading(null);
