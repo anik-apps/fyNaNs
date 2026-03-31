@@ -68,6 +68,7 @@ jobs:
           API_URL=https://${{ secrets.DOMAIN }}
           RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
           GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
+          DEV_ALLOWLIST_EMAILS=${{ secrets.DEV_ALLOWLIST_EMAILS }}
           LOGIN_RATE_LIMIT=5
           GENERAL_RATE_LIMIT=100
           GRAFANA_CLOUD_PROMETHEUS_URL=${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
