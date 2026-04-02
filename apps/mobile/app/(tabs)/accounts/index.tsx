@@ -8,13 +8,13 @@ import {
   TouchableOpacity,
   Alert,
 } from "react-native";
-import { useRouter, useFocusEffect } from "expo-router";
+import { Stack, useRouter, useFocusEffect } from "expo-router";
+import { Plus } from "lucide-react-native";
 import { AccountList } from "@/src/components/accounts/AccountList";
 import { EmptyState } from "@/src/components/shared/EmptyState";
 import { ErrorView } from "@/src/components/shared/ErrorView";
 import { useApi } from "@/src/hooks/useApi";
 import { apiFetch } from "@/src/lib/api-client";
-import { type Account } from "@fynans/shared-types";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { createLinkToken, openPlaidLink } from "@/src/lib/plaid";
 
@@ -23,7 +23,7 @@ export default function AccountsScreen() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
 
-  const { data, isLoading, error, refresh } = useApi<Account[]>(() =>
+  const { data, isLoading, error, refresh } = useApi<any[]>(() =>
     apiFetch("/api/accounts")
   );
 
@@ -102,6 +102,19 @@ export default function AccountsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.surface }]}>
+      <Stack.Screen
+        options={{
+          headerRight: () => (
+            <TouchableOpacity
+              onPress={() => router.push("/(tabs)/accounts/add")}
+              style={{ marginRight: 4 }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Plus color={theme.colors.primary} size={24} />
+            </TouchableOpacity>
+          ),
+        }}
+      />
       <AccountList
         accounts={data}
         onAccountPress={handleAccountPress}

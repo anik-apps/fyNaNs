@@ -42,3 +42,4 @@ htmlcov/
 # Docker
 *.log
 plaid-raw-data-report.json
+test-results/

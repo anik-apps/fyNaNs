@@ -1,3 +1,5 @@
+from datetime import date
+
 import pytest
 from httpx import AsyncClient
 
@@ -41,18 +43,21 @@ async def setup_budget_with_transactions(client: AsyncClient) -> dict:
         "period": "monthly",
     })
 
-    # Create transactions in current month
+    # Create transactions in current month (use relative dates so test doesn't rot)
+    today = date.today()
+    day5 = date(today.year, today.month, min(5, today.day)).isoformat()
+    day10 = date(today.year, today.month, min(10, today.day)).isoformat()
     await client.post("/api/transactions", headers=headers, json={
         "account_id": account_id,
         "amount": "50.00",
-        "date": "2026-03-05",
+        "date": day5,
         "description": "Groceries",
         "category_id": category_id,
     })
     await client.post("/api/transactions", headers=headers, json={
         "account_id": account_id,
         "amount": "30.00",
-        "date": "2026-03-10",
+        "date": day10,
         "description": "Restaurant",
         "category_id": category_id,
     })

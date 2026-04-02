@@ -6,8 +6,8 @@ module.exports = {
   ],
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/$1",
-    "^react-test-renderer(.*)$":
-      "<rootDir>/../../node_modules/.pnpm/react-test-renderer@19.2.0_react@19.1.0/node_modules/react-test-renderer$1",
+    "^react$": "<rootDir>/../../node_modules/react",
+    "^react-test-renderer$": "<rootDir>/../../node_modules/react-test-renderer",
   },
   collectCoverageFrom: [
     "src/**/*.{ts,tsx}",

@@ -1,18 +1,27 @@
 import React from "react";
-import { SectionList, Text, StyleSheet, View } from "react-native";
+import { SectionList, Text, StyleSheet, View, RefreshControlProps } from "react-native";
 import { AccountCard } from "./AccountCard";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { formatCurrency } from "@/src/lib/utils";
 import {
   ASSET_ACCOUNT_TYPES,
   LIABILITY_ACCOUNT_TYPES,
-  type Account,
+  type AccountType,
 } from "@fynans/shared-types";
+
+interface Account {
+  id: string;
+  name: string;
+  official_name: string | null;
+  type: AccountType;
+  balance: string | number;
+  institution_name: string | null;
+}
 
 interface AccountListProps {
   accounts: Account[];
   onAccountPress: (id: string) => void;
-  refreshControl?: React.ReactElement;
+  refreshControl?: React.ReactElement<RefreshControlProps>;
   ListHeaderComponent?: React.ReactElement;
 }
 
@@ -125,12 +134,10 @@ export function AccountList({
         <AccountCard
           id={item.id}
           name={item.name}
+          official_name={item.official_name}
           type={item.type}
           balance={item.balance}
           institution_name={null}
-          is_manual={item.is_manual}
-          plaid_item_id={item.plaid_item_id}
-          last_synced_at={item.last_synced_at}
           onPress={onAccountPress}
         />
       )}

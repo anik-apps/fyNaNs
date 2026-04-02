@@ -1,4 +1,4 @@
-import { openLink, LinkSuccess, LinkExit } from "react-native-plaid-link-sdk";
+import { create, open, destroy, LinkSuccess, LinkExit } from "react-native-plaid-link-sdk";
 import { apiFetch } from "./api-client";
 
 interface LinkTokenResponse {
@@ -39,26 +39,32 @@ export function openPlaidLink(
   onSuccess: (result: ExchangeTokenResponse) => void,
   onExit: (error?: string) => void
 ): void {
-  openLink({
-    tokenConfig: { token: linkToken },
-    onSuccess: async (success: LinkSuccess) => {
-      try {
-        const result = await exchangePublicToken(
-          success.publicToken,
-          success.metadata.institution?.id || "",
-          success.metadata.institution?.name || ""
-        );
-        onSuccess(result);
-      } catch (e: any) {
-        onExit(e.message || "Failed to link account");
-      }
-    },
-    onExit: (exit: LinkExit) => {
-      if (exit.error) {
-        onExit(exit.error.displayMessage || exit.error.errorMessage);
-      } else {
-        onExit();
-      }
+  destroy();
+  create({
+    token: linkToken,
+    onLoad: () => {
+      open({
+        onSuccess: async (success: LinkSuccess) => {
+          try {
+            const result = await exchangePublicToken(
+              success.publicToken,
+              success.metadata.institution?.id || "",
+              success.metadata.institution?.name || ""
+            );
+            onSuccess(result);
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : "Failed to link account";
+            onExit(msg);
+          }
+        },
+        onExit: (exit: LinkExit) => {
+          if (exit.error) {
+            onExit(exit.error.displayMessage || exit.error.errorMessage);
+          } else {
+            onExit();
+          }
+        },
+      });
     },
   });
 }
