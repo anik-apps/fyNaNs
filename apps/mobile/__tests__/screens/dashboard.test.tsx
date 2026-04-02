@@ -11,7 +11,7 @@ jest.mock("@/src/lib/api-client", () => ({
 }));
 
 const mockAuthValue = {
-  user: { id: "1", email: "test@test.com", name: "Test", avatar_url: null, has_mfa: false },
+  user: { id: "1", email: "test@test.com", name: "Test", avatar_url: null, has_mfa: false, is_dev: false },
   isLoading: false,
   accessToken: "mock-token",
   login: jest.fn(),

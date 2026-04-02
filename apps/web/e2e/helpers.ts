@@ -90,25 +90,24 @@ export async function createAuthenticatedUser(
     },
   ]);
 
-  // 5. Intercept API calls that have frontend/backend format mismatches.
-  // The security page expects { items: Session[] } but the API returns Session[].
+  // 5. Intercept API calls to ensure consistent responses.
+  // The security page expects Session[] from /api/auth/sessions.
   await page.route('**/api/auth/sessions', async (route) => {
     const response = await route.fetch();
     if (response.ok()) {
       const data = await response.json();
-      // Wrap array in { items: [...] } if needed
-      const body = Array.isArray(data) ? { items: data } : data;
+      // Ensure response is an array (the page calls .map() on it)
+      const body = Array.isArray(data) ? data : data.items ?? [];
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify(body),
       });
     } else {
-      // Return empty items on error
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ items: [] }),
+        body: JSON.stringify([]),
       });
     }
   });

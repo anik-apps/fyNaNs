@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 
 interface UseApiOptions<T> {
   onSuccess?: (data: T) => void;
@@ -14,11 +14,14 @@ export function useApi<T>(
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
+  const fetcherRef = useRef(fetcher);
+  fetcherRef.current = fetcher;
+
   const execute = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await fetcher();
+      const result = await fetcherRef.current();
       setData(result);
       options?.onSuccess?.(result);
     } catch (err) {
@@ -28,7 +31,7 @@ export function useApi<T>(
     } finally {
       setIsLoading(false);
     }
-  }, [fetcher]);
+  }, []);
 
   const refresh = useCallback(async () => {
     await execute();
