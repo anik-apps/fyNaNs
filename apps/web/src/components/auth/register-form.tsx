@@ -64,7 +64,7 @@ export function RegisterForm() {
   }
 
   return (
-    <Card>
+    <Card className="bg-card/60 backdrop-blur-sm">
       <CardHeader>
         <CardTitle>Create account</CardTitle>
       </CardHeader>

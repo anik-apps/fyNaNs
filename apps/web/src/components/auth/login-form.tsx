@@ -55,7 +55,7 @@ export function LoginForm() {
   }
 
   return (
-    <Card>
+    <Card className="bg-card/60 backdrop-blur-sm">
       <CardHeader>
         <CardTitle>Sign in</CardTitle>
       </CardHeader>

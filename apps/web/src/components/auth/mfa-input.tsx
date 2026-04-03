@@ -74,7 +74,7 @@ export function MfaInput() {
   }
 
   return (
-    <Card>
+    <Card className="bg-card/60 backdrop-blur-sm">
       <CardHeader>
         <CardTitle>Two-factor authentication</CardTitle>
         <CardDescription>
