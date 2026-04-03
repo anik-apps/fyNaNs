@@ -29,7 +29,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: eas-build-${{ github.event.inputs.platform || 'android' }}-${{ github.event.inputs.profile || 'preview' }}
+  group: eas-build-${{ github.event_name }}-${{ github.event.inputs.platform || 'android' }}-${{ github.event.inputs.profile || 'preview' }}
   cancel-in-progress: true
 
 jobs:
@@ -39,6 +39,8 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     outputs:
       should_build: ${{ steps.check.outputs.should_build }}
+    env:
+      EVENT_NAME: ${{ github.event_name }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -47,11 +49,16 @@ jobs:
       - name: Detect mobile changes
         id: check
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             echo "should_build=true" >> "$GITHUB_OUTPUT"
             echo "Manual trigger — building"
           else
-            CHANGED=$(git diff --name-only HEAD~1 -- apps/mobile/ | head -1)
+            if git rev-parse HEAD~1 >/dev/null 2>&1; then
+              CHANGED=$(git diff --name-only HEAD~1 -- apps/mobile/ | head -1)
+            else
+              echo "No parent commit found, assuming changes"
+              CHANGED="assumed"
+            fi
             if [ -n "$CHANGED" ]; then
               echo "should_build=true" >> "$GITHUB_OUTPUT"
               echo "Mobile changes detected"
@@ -100,5 +107,9 @@ jobs:
 
       - name: Run EAS Build
         run: |
+          if [ "$PROFILE" = "production" ] && [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Production builds must run from main branch"
+            exit 1
+          fi
           echo "Building profile=$PROFILE platform=$PLATFORM"
           eas build --profile "$PROFILE" --platform "$PLATFORM" --non-interactive
