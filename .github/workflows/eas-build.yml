@@ -1,0 +1,116 @@
+name: EAS Build (Mobile)
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "EAS build profile"
+        required: true
+        default: "preview"
+        type: choice
+        options:
+          - preview
+          - production
+      platform:
+        description: "Platform to build"
+        required: true
+        default: "android"
+        type: choice
+        options:
+          - android
+          - ios
+          - all
+  workflow_run:
+    workflows: ["Build & Deploy"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eas-build-${{ github.event_name }}-${{ github.event.inputs.platform || 'android' }}-${{ github.event.inputs.profile || 'preview' }}
+  cancel-in-progress: true
+
+jobs:
+  check-changes:
+    name: Check for mobile changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    outputs:
+      should_build: ${{ steps.check.outputs.should_build }}
+    env:
+      EVENT_NAME: ${{ github.event_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 10
+
+      - name: Detect mobile changes
+        id: check
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            echo "Manual trigger — building"
+          else
+            if git rev-parse HEAD~1 >/dev/null 2>&1; then
+              CHANGED=$(git diff --name-only HEAD~1 -- apps/mobile/ | head -1)
+            else
+              echo "No parent commit found, assuming changes"
+              CHANGED="assumed"
+            fi
+            if [ -n "$CHANGED" ]; then
+              echo "should_build=true" >> "$GITHUB_OUTPUT"
+              echo "Mobile changes detected"
+            else
+              echo "should_build=false" >> "$GITHUB_OUTPUT"
+              echo "No mobile changes — skipping"
+            fi
+          fi
+
+  eas-build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: check-changes
+    if: needs.check-changes.outputs.should_build == 'true'
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: apps/mobile
+    env:
+      PROFILE: ${{ github.event.inputs.profile || 'preview' }}
+      PLATFORM: ${{ github.event.inputs.platform || 'android' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: .
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: ^14.0.0
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Run EAS Build
+        run: |
+          if [ "$PROFILE" = "production" ] && [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Production builds must run from main branch"
+            exit 1
+          fi
+          echo "Building profile=$PROFILE platform=$PLATFORM"
+          eas build --profile "$PROFILE" --platform "$PLATFORM" --non-interactive
