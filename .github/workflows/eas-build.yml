@@ -36,6 +36,7 @@ jobs:
   check-changes:
     name: Check for mobile changes
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     outputs:
       should_build: ${{ steps.check.outputs.should_build }}
