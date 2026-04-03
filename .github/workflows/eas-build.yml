@@ -1,0 +1,88 @@
+name: EAS Build (Mobile)
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "EAS build profile"
+        required: true
+        default: "preview"
+        type: choice
+        options:
+          - preview
+          - production
+      platform:
+        description: "Platform to build"
+        required: true
+        default: "android"
+        type: choice
+        options:
+          - android
+          - ios
+          - all
+  workflow_run:
+    workflows: ["Build & Deploy"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  eas-build:
+    name: EAS Build (${{ github.event.inputs.profile || 'preview' }} / ${{ github.event.inputs.platform || 'android' }})
+    runs-on: ubuntu-latest
+    # Only run on workflow_dispatch, or after successful deploy if mobile files changed
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success')
+    defaults:
+      run:
+        working-directory: apps/mobile
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for mobile changes
+        if: github.event_name != 'workflow_dispatch'
+        id: changes
+        run: |
+          # Compare with the commit before the deploy
+          CHANGED=$(git diff --name-only HEAD~1 -- apps/mobile/ | head -1)
+          if [ -z "$CHANGED" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "No mobile changes — skipping EAS build"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Mobile changes detected — triggering EAS build"
+          fi
+        working-directory: .
+
+      - name: Setup Node.js
+        if: steps.changes.outputs.skip != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        if: steps.changes.outputs.skip != 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install dependencies
+        if: steps.changes.outputs.skip != 'true'
+        run: pnpm install --frozen-lockfile
+        working-directory: .
+
+      - name: Setup EAS
+        if: steps.changes.outputs.skip != 'true'
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Build
+        if: steps.changes.outputs.skip != 'true'
+        run: |
+          PROFILE="${{ github.event.inputs.profile || 'preview' }}"
+          PLATFORM="${{ github.event.inputs.platform || 'android' }}"
+          echo "Building profile=$PROFILE platform=$PLATFORM"
+          eas build --profile "$PROFILE" --platform "$PLATFORM" --non-interactive
