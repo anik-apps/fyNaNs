@@ -44,8 +44,11 @@ export function Header() {
     <header className="sticky top-0 z-40 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
       <div className="flex h-14 items-center justify-between px-4 md:px-6">
         {/* Mobile logo */}
-        <div className="md:hidden text-lg font-bold">
-          fy<span className="text-muted-foreground">NaN</span>s
+        <div className="md:hidden flex items-center gap-2">
+          <img src="/logo-40.png" alt="fyNaNs" width={32} height={32} className="rounded-lg" />
+          <span className="text-lg font-bold">
+            fy<span className="text-muted-foreground">NaN</span>s
+          </span>
         </div>
 
         {/* Desktop: page title area (filled by page) */}

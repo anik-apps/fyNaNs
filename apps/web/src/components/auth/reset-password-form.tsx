@@ -69,7 +69,7 @@ export function ResetPasswordForm() {
 
   if (!token) {
     return (
-      <Card>
+      <Card className="bg-card/60 backdrop-blur-sm">
         <CardHeader>
           <CardTitle>Invalid link</CardTitle>
           <CardDescription>
@@ -89,7 +89,7 @@ export function ResetPasswordForm() {
 
   if (success) {
     return (
-      <Card>
+      <Card className="bg-card/60 backdrop-blur-sm">
         <CardHeader>
           <CardTitle>Password reset</CardTitle>
           <CardDescription>
@@ -106,7 +106,7 @@ export function ResetPasswordForm() {
   }
 
   return (
-    <Card>
+    <Card className="bg-card/60 backdrop-blur-sm">
       <CardHeader>
         <CardTitle>Set new password</CardTitle>
         <CardDescription>Enter your new password below</CardDescription>

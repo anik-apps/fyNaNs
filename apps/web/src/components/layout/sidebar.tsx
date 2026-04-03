@@ -28,8 +28,11 @@ export function Sidebar() {
   return (
     <aside className="hidden md:flex md:flex-col md:w-64 border-r bg-card h-screen sticky top-0">
       <div className="p-6">
-        <Link href={ROUTES.DASHBOARD} className="text-2xl font-bold">
-          fy<span className="text-muted-foreground">NaN</span>s
+        <Link href={ROUTES.DASHBOARD} className="flex items-center gap-3">
+          <img src="/logo-40.png" alt="fyNaNs" width={40} height={40} className="rounded-lg" />
+          <span className="text-2xl font-bold">
+            fy<span className="text-muted-foreground">NaN</span>s
+          </span>
         </Link>
       </div>
 

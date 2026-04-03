@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>fyNaNs Asset Preview</title>
+<style>
+  body { font-family: system-ui; margin: 40px; background: #f5f5f5; }
+  h1 { margin-bottom: 8px; }
+  h2 { margin-top: 40px; color: #555; border-bottom: 1px solid #ddd; padding-bottom: 8px; }
+  .grid { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-end; }
+  .item { text-align: center; }
+  .item img { border: 1px solid #ddd; border-radius: 8px; background: repeating-conic-gradient(#eee 0% 25%, #fff 0% 50%) 50%/16px 16px; }
+  .item p { margin: 8px 0 0; font-size: 12px; color: #888; }
+  .dark-bg img { background: #1a1a1a !important; border-color: #333; }
+  .toggle { margin: 20px 0; }
+  .toggle button { padding: 8px 16px; border: 1px solid #ccc; border-radius: 6px; cursor: pointer; background: white; }
+  .toggle button.active { background: #222; color: white; }
+</style>
+</head>
+<body>
+<h1>fyNaNs Asset Preview</h1>
+<div class="toggle">
+  <button onclick="setBg('checker')" class="active" id="btn-checker">Checkerboard</button>
+  <button onclick="setBg('white')" id="btn-white">White BG</button>
+  <button onclick="setBg('dark')" id="btn-dark">Dark BG</button>
+</div>
+
+<h2>Web — Circular Icons</h2>
+<div class="grid" id="web-circle">
+  <div class="item"><img src="/favicon.ico" width="32" height="32"><p>favicon.ico<br>32x32</p></div>
+  <div class="item"><img src="/apple-touch-icon.png" width="90" height="90"><p>apple-touch-icon<br>180x180</p></div>
+  <div class="item"><img src="/icon-192.png" width="96" height="96"><p>icon-192<br>192x192</p></div>
+  <div class="item"><img src="/icon-512.png" width="128" height="128"><p>icon-512<br>512x512</p></div>
+</div>
+
+<h2>Web — Square Logos</h2>
+<div class="grid" id="web-square">
+  <div class="item"><img src="/logo-40.png" width="40" height="40"><p>logo-40<br>40x40</p></div>
+  <div class="item"><img src="/logo-120.png" width="120" height="120"><p>logo-120<br>120x120</p></div>
+  <div class="item"><img src="/logo-200.png" width="200" height="200"><p>logo-200<br>200x200</p></div>
+</div>
+
+<h2>Web — OG Image</h2>
+<div class="grid">
+  <div class="item"><img src="/og-image.png" width="600" height="315"><p>og-image<br>1200x630</p></div>
+</div>
+
+<h2>Web — Watermark</h2>
+<div class="grid">
+  <div class="item"><img src="/logo-watermark.png" width="200" height="200"><p>logo-watermark<br>(used as background)</p></div>
+</div>
+
+<script>
+function setBg(mode) {
+  document.querySelectorAll('.grid .item img').forEach(img => {
+    if (mode === 'checker') img.style.background = 'repeating-conic-gradient(#eee 0% 25%, #fff 0% 50%) 50%/16px 16px';
+    else if (mode === 'white') img.style.background = '#fff';
+    else img.style.background = '#1a1a1a';
+  });
+  document.querySelectorAll('.toggle button').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn-' + mode).classList.add('active');
+}
+</script>
+</body>
+</html>

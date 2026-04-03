@@ -58,7 +58,7 @@ export function ForgotPasswordForm() {
 
   if (success) {
     return (
-      <Card>
+      <Card className="bg-card/60 backdrop-blur-sm">
         <CardHeader>
           <CardTitle>Check your email</CardTitle>
           <CardDescription>
@@ -78,7 +78,7 @@ export function ForgotPasswordForm() {
   }
 
   return (
-    <Card>
+    <Card className="bg-card/60 backdrop-blur-sm">
       <CardHeader>
         <CardTitle>Forgot password</CardTitle>
         <CardDescription>

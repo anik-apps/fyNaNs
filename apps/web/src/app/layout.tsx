@@ -9,6 +9,13 @@ const inter = Inter({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: "fyNaNs",
   description: "Personal finance tracking",
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
+  },
+  openGraph: {
+    images: ["/og-image.png"],
+  },
 };
 
 export default function RootLayout({
