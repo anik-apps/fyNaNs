@@ -9,6 +9,8 @@
 #   ./scripts/emu.sh --plaid-test                    # Legacy: navigate to dev settings
 #   ./scripts/emu.sh --tap "Link Bank Account"       # Tap element with text
 #   ./scripts/emu.sh --cdp get-text                  # Run CDP command on active WebView
+#   ./scripts/emu.sh --start                          # Start emulator (gpu host, no snapshot)
+#   ./scripts/emu.sh --stop                           # Stop emulator
 #   ./scripts/emu.sh --screenshot                    # Take screenshot
 #   ./scripts/emu.sh --dump                          # Dump UI hierarchy texts
 
@@ -23,6 +25,8 @@ UI_XML="/tmp/claude/ui.xml"
 # Local emulator-only test credentials (not used in staging/production)
 EMAIL="${EMU_EMAIL:-test@kumaranik.com}"
 PASS="${EMU_PASS:-TestPass123}"
+
+AVD_NAME="${AVD_NAME:-fynans_test}"
 
 mkdir -p "$SCREENSHOT_DIR"
 
@@ -148,6 +152,35 @@ for n in ET.parse('$UI_XML').iter('node'):
 }
 
 # ─── Commands ──────────────────────────────────────────────────────────────────
+
+do_start() {
+    echo "=== Starting emulator ($AVD_NAME) ==="
+    # Use host GPU to avoid software renderer memory bloat (29GB+)
+    # Skip snapshot load for clean boot
+    emulator "@$AVD_NAME" -gpu host -no-snapshot-load -no-audio &>/dev/null &
+    echo "Waiting for boot..."
+    adb wait-for-device
+    for i in $(seq 1 60); do
+        boot=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+        if [ "$boot" = "1" ]; then
+            echo "Emulator booted in ~$((i*2))s"
+            return 0
+        fi
+        sleep 2
+    done
+    echo "ERROR: Emulator did not boot within 120s"
+    return 1
+}
+
+do_stop() {
+    echo "=== Stopping emulator ==="
+    adb emu kill 2>/dev/null || true
+    sleep 2
+    pkill -f "qemu-system" 2>/dev/null || true
+    pkill -f "emulator/netsimd" 2>/dev/null || true
+    pkill -f "emulator/crashpad" 2>/dev/null || true
+    echo "Emulator stopped"
+}
 
 do_install() {
     echo "=== Installing APK ==="
@@ -389,6 +422,8 @@ if [ $# -eq 0 ]; then
     echo "Usage: $0 [--install] [--login] [--screenshot [NAME]] [--plaid-link] [--tap TEXT] [--cdp ACTION] [--dump] [--nav TAB]"
     echo ""
     echo "Commands:"
+    echo "  --start             Start emulator (host GPU, no snapshot)"
+    echo "  --stop              Stop emulator and free memory"
     echo "  --install           Install release APK"
     echo "  --login             Login with test credentials"
     echo "  --plaid-link        Full Plaid sandbox link flow (end-to-end)"
@@ -408,6 +443,14 @@ fi
 
 while [ $# -gt 0 ]; do
     case "$1" in
+        --start)
+            do_start
+            shift
+            ;;
+        --stop)
+            do_stop
+            shift
+            ;;
         --install)
             do_install
             shift
