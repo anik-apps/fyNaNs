@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { Link, useRouter } from "expo-router";
 import { useAuth } from "@/src/hooks/useAuth";
+import { GoogleSignInButton } from "@/src/components/auth/GoogleSignInButton";
 
 export default function LoginScreen() {
   const { login } = useAuth();
@@ -105,6 +106,14 @@ export default function LoginScreen() {
           </TouchableOpacity>
         </View>
 
+        <View style={styles.divider}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>OR</Text>
+          <View style={styles.dividerLine} />
+        </View>
+
+        <GoogleSignInButton />
+
         <View style={styles.footer}>
           <Text style={styles.footerText}>Don't have an account? </Text>
           <Link href="/(auth)/register" asChild>
@@ -165,4 +174,20 @@ const styles = StyleSheet.create({
   },
   footerText: { fontSize: 14, color: "#6B7280" },
   link: { fontSize: 14, color: "#4A90D9", fontWeight: "500" },
+  divider: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 20,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "#D1D5DB",
+  },
+  dividerText: {
+    marginHorizontal: 12,
+    fontSize: 12,
+    color: "#9CA3AF",
+    fontWeight: "500",
+  },
 });

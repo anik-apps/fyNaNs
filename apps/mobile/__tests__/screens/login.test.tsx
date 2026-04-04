@@ -12,6 +12,7 @@ const mockAuthValue = {
   verifyMfa: jest.fn(),
   logout: jest.fn(),
   refreshAuth: jest.fn(),
+  loginWithOAuth: jest.fn(),
 };
 
 function renderWithAuth(ui: React.ReactElement) {
