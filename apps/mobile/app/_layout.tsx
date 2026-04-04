@@ -8,6 +8,15 @@ import { useBiometric } from "@/src/hooks/useBiometric";
 import { useAuth } from "@/src/hooks/useAuth";
 // Push notifications removed from Expo Go SDK 53+
 // import { usePushNotifications } from "@/src/hooks/usePushNotifications";
+import { GoogleSignin } from "@react-native-google-signin/google-signin";
+
+try {
+  GoogleSignin.configure({
+    webClientId: "110399383495-tvvn8ncuaju99704n3bsielli80bv89d.apps.googleusercontent.com",
+  });
+} catch {
+  // Native module not available (e.g. Expo Go) — Google sign-in will be unavailable
+}
 
 function AppContent({ children }: { children: React.ReactNode }) {
   const appState = useRef(AppState.currentState);

@@ -42,7 +42,8 @@
           "color": "#4A90D9"
         }
       ],
-      "expo-build-properties"
+      "expo-build-properties",
+      "@react-native-google-signin/google-signin"
     ],
     "extra": {
       "eas": {
