@@ -75,8 +75,8 @@ importers:
         specifier: ^7.25.0
         version: 7.29.0
       '@expo/fingerprint':
-        specifier: ^0.16.6
-        version: 0.16.6
+        specifier: ^0.15.4
+        version: 0.15.4
       '@testing-library/react-native':
         specifier: ^13.3.3
         version: 13.3.3(jest@29.7.0(@types/node@20.19.37))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react-test-renderer@19.1.0(react@19.1.0))(react@19.1.0)
@@ -1021,10 +1021,6 @@ packages:
 
   '@expo/fingerprint@0.15.4':
     resolution: {integrity: sha512-eYlxcrGdR2/j2M6pEDXo9zU9KXXF1vhP+V+Tl+lyY+bU8lnzrN6c637mz6Ye3em2ANy8hhUR03Raf8VsT9Ogng==}
-    hasBin: true
-
-  '@expo/fingerprint@0.16.6':
-    resolution: {integrity: sha512-nRITNbnu3RKSHPvKVehrSU4KG2VY9V8nvULOHBw98ukHCAU4bGrU5APvcblOkX3JAap+xEHsg/mZvqlvkLInmQ==}
     hasBin: true
 
   '@expo/image-utils@0.8.12':
@@ -7432,22 +7428,6 @@ snapshots:
       ignore: 5.3.2
       minimatch: 9.0.9
       p-limit: 3.1.0
-      resolve-from: 5.0.0
-      semver: 7.7.4
-    transitivePeerDependencies:
-      - supports-color
-
-  '@expo/fingerprint@0.16.6':
-    dependencies:
-      '@expo/env': 2.0.11
-      '@expo/spawn-async': 1.7.2
-      arg: 5.0.2
-      chalk: 4.1.2
-      debug: 4.4.3
-      getenv: 2.0.0
-      glob: 13.0.6
-      ignore: 5.3.2
-      minimatch: 10.2.4
       resolve-from: 5.0.0
       semver: 7.7.4
     transitivePeerDependencies:
