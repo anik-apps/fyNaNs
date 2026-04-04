@@ -10,7 +10,7 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc* ./
 COPY apps/web/package.json ./apps/web/
 COPY packages/api-client/package.json ./packages/api-client/
-COPY packages/shared-types/package.json ./packages/shared-types/
+COPY packages/shared-types/ ./packages/shared-types/
 
 # Install all dependencies
 RUN pnpm install --frozen-lockfile
