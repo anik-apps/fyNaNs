@@ -9,6 +9,7 @@ import {
   Platform,
   ScrollView,
   Alert,
+  Image,
 } from "react-native";
 import { Link, useRouter } from "expo-router";
 import { useAuth } from "@/src/hooks/useAuth";
@@ -55,6 +56,10 @@ export default function LoginScreen() {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
+        <Image
+          source={require("@/assets/images/logo-square.png")}
+          style={styles.logoImage}
+        />
         <Text style={styles.logo}>fyNaNs</Text>
         <Text style={styles.subtitle}>
           Your finances, beyond the numbers
@@ -134,6 +139,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: 24,
   },
+  logoImage: { width: 80, height: 80, alignSelf: "center", marginBottom: 12, borderRadius: 12 },
   logo: { fontSize: 36, fontWeight: "bold", textAlign: "center" },
   subtitle: {
     fontSize: 14,

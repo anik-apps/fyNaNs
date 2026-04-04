@@ -9,6 +9,7 @@ import {
   Platform,
   ScrollView,
   Alert,
+  Image,
 } from "react-native";
 import { Link } from "expo-router";
 import { useAuth } from "@/src/hooks/useAuth";
@@ -58,6 +59,10 @@ export default function RegisterScreen() {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
+        <Image
+          source={require("@/assets/images/logo-square.png")}
+          style={styles.logoImage}
+        />
         <Text style={styles.title}>Create Account</Text>
         <Text style={styles.subtitle}>
           Start managing your finances today
@@ -149,6 +154,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: 24,
   },
+  logoImage: { width: 80, height: 80, alignSelf: "center", marginBottom: 12, borderRadius: 12 },
   title: { fontSize: 28, fontWeight: "bold", textAlign: "center" },
   subtitle: {
     fontSize: 14,
