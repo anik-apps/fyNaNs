@@ -212,7 +212,7 @@ async def oauth_login(
         await db.commit()
         await db.refresh(user)
 
-    device_info = http_request.headers.get("user-agent", "unknown")
+    device_info = request.device_info or http_request.headers.get("user-agent", "unknown")
     access_token, refresh_token = await create_token_pair(db, user.id, device_info)
 
     _set_refresh_cookie(response, refresh_token)

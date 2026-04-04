@@ -48,6 +48,7 @@ class UserResponse(BaseModel):
 
 class OAuthRequest(BaseModel):
     id_token: str
+    device_info: str | None = None
 
 
 class RefreshRequest(BaseModel):
