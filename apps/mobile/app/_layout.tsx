@@ -14,8 +14,8 @@ try {
   GoogleSignin.configure({
     webClientId: "110399383495-tvvn8ncuaju99704n3bsielli80bv89d.apps.googleusercontent.com",
   });
-} catch {
-  // Native module not available (e.g. Expo Go) — Google sign-in will be unavailable
+} catch (e) {
+  if (__DEV__) console.warn("GoogleSignin.configure failed:", e);
 }
 
 function AppContent({ children }: { children: React.ReactNode }) {

@@ -76,4 +76,5 @@ jest.mock("@react-native-google-signin/google-signin", () => ({
     IN_PROGRESS: "IN_PROGRESS",
     PLAY_SERVICES_NOT_AVAILABLE: "PLAY_SERVICES_NOT_AVAILABLE",
   },
+  isErrorWithCode: jest.fn((error: unknown) => error != null && typeof error === "object" && "code" in error),
 }));
