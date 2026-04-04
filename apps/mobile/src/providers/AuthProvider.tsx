@@ -8,6 +8,7 @@ import {
 } from "@/src/lib/auth-storage";
 import { API_URL } from "@/src/lib/constants";
 import { setAccessToken as setApiAccessToken } from "@/src/lib/api-client";
+import { GoogleSignin } from "@react-native-google-signin/google-signin";
 
 export interface AuthUser {
   id: string;
@@ -30,6 +31,7 @@ interface AuthContextType {
   verifyMfa: (mfaToken: string, code: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshAuth: () => Promise<boolean>;
+  loginWithOAuth: (provider: string, idToken: string) => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextType | null>(null);
@@ -189,10 +191,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // Proceed with local cleanup even if server request fails
     }
+    // Clear Google sign-in session (no-op if user didn't sign in via Google)
+    try { await GoogleSignin.signOut(); } catch {}
     await deleteRefreshToken();
     updateAccessToken(null);
     setUser(null);
   }, [accessToken]);
+
+  const loginWithOAuth = useCallback(async (provider: string, idToken: string) => {
+    const deviceInfo = await getDeviceInfo();
+    const response = await fetch(`${API_URL}/api/auth/oauth/${provider}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id_token: idToken, device_info: deviceInfo }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: "OAuth login failed" }));
+      throw new Error(error.detail || "OAuth login failed");
+    }
+
+    const data = await response.json();
+    updateAccessToken(data.access_token);
+    setUser(data.user);
+    if (data.refresh_token) {
+      await storeRefreshToken(data.refresh_token);
+    }
+  }, []);
 
   return (
     <AuthContext.Provider
@@ -205,6 +230,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         verifyMfa,
         logout,
         refreshAuth,
+        loginWithOAuth,
       }}
     >
       {children}

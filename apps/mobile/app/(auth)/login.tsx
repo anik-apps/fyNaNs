@@ -9,9 +9,11 @@ import {
   Platform,
   ScrollView,
   Alert,
+  Image,
 } from "react-native";
 import { Link, useRouter } from "expo-router";
 import { useAuth } from "@/src/hooks/useAuth";
+import { GoogleSignInButton } from "@/src/components/auth/GoogleSignInButton";
 
 export default function LoginScreen() {
   const { login } = useAuth();
@@ -54,6 +56,10 @@ export default function LoginScreen() {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
+        <Image
+          source={require("@/assets/images/logo-square.png")}
+          style={styles.logoImage}
+        />
         <Text style={styles.logo}>fyNaNs</Text>
         <Text style={styles.subtitle}>
           Your finances, beyond the numbers
@@ -105,6 +111,14 @@ export default function LoginScreen() {
           </TouchableOpacity>
         </View>
 
+        <View style={styles.divider}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>OR</Text>
+          <View style={styles.dividerLine} />
+        </View>
+
+        <GoogleSignInButton />
+
         <View style={styles.footer}>
           <Text style={styles.footerText}>Don't have an account? </Text>
           <Link href="/(auth)/register" asChild>
@@ -125,6 +139,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: 24,
   },
+  logoImage: { width: 80, height: 80, alignSelf: "center", marginBottom: 12, borderRadius: 12 },
   logo: { fontSize: 36, fontWeight: "bold", textAlign: "center" },
   subtitle: {
     fontSize: 14,
@@ -165,4 +180,20 @@ const styles = StyleSheet.create({
   },
   footerText: { fontSize: 14, color: "#6B7280" },
   link: { fontSize: 14, color: "#4A90D9", fontWeight: "500" },
+  divider: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 20,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "#D1D5DB",
+  },
+  dividerText: {
+    marginHorizontal: 12,
+    fontSize: 12,
+    color: "#9CA3AF",
+    fontWeight: "500",
+  },
 });

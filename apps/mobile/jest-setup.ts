@@ -61,3 +61,20 @@ jest.mock("expo-router", () => ({
 jest.mock("expo-status-bar", () => ({
   StatusBar: "StatusBar",
 }));
+
+// Mock @react-native-google-signin/google-signin
+jest.mock("@react-native-google-signin/google-signin", () => ({
+  GoogleSignin: {
+    configure: jest.fn(),
+    signIn: jest.fn(),
+    signOut: jest.fn(),
+    hasPlayServices: jest.fn().mockResolvedValue(true),
+    getTokens: jest.fn(),
+  },
+  statusCodes: {
+    SIGN_IN_CANCELLED: "SIGN_IN_CANCELLED",
+    IN_PROGRESS: "IN_PROGRESS",
+    PLAY_SERVICES_NOT_AVAILABLE: "PLAY_SERVICES_NOT_AVAILABLE",
+  },
+  isErrorWithCode: jest.fn((error: unknown) => error != null && typeof error === "object" && "code" in error),
+}));

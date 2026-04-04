@@ -16,6 +16,7 @@
     "@expo/metro-runtime": "~6.1.2",
     "@expo/vector-icons": "^15.1.1",
     "@fynans/shared-types": "workspace:*",
+    "@react-native-google-signin/google-signin": "^16.1.2",
     "expo": "~54.0.33",
     "expo-build-properties": "^1.0.10",
     "expo-constants": "~18.0.13",
