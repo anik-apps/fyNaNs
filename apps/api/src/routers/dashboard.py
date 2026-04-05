@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.constants import INCOME_CATEGORIES, TRANSFER_CATEGORIES
 from src.models.account import Account
 from src.models.transaction import Transaction
 from src.models.user import User
@@ -104,17 +105,14 @@ async def net_worth_history(
     # Plaid sign convention (all account types):
     #   positive = money out, negative = money in
     # Category overrides sign for known income/transfer categories.
-    income_categories = {"Income", "Salary", "Freelance", "Other Income", "Investments"}
-    transfer_categories = {"Transfer"}
-
     daily_deltas: dict[date, float] = {}
     for txn_date, amount, cat_name in transactions:
         d = txn_date if isinstance(txn_date, date) else date.fromisoformat(str(txn_date))
         amt = float(amount)
 
-        if cat_name in transfer_categories:
+        if cat_name in TRANSFER_CATEGORIES:
             continue
-        elif cat_name in income_categories:
+        elif cat_name in INCOME_CATEGORIES:
             # Income increased NW → to reverse going backwards, subtract
             delta = -abs(amt)
         elif amt < 0:
@@ -187,9 +185,6 @@ async def spending_history(
     user_id = str(current_user.id)
     today = date.today()
 
-    income_categories = {"Income", "Salary", "Freelance", "Other Income", "Investments"}
-    transfer_categories = {"Transfer"}
-
     # Determine periods
     points: list[SpendingBarPoint] = []
 
@@ -207,7 +202,7 @@ async def spending_history(
             label = month_start.strftime("%b %Y")
             spending, income = await _compute_period_totals(
                 db, user_id, month_start, month_end,
-                income_categories, transfer_categories,
+                INCOME_CATEGORIES, TRANSFER_CATEGORIES,
             )
             points.append(SpendingBarPoint(
                 label=label,
@@ -224,7 +219,7 @@ async def spending_history(
             label = str(y)
             spending, income = await _compute_period_totals(
                 db, user_id, year_start, year_end,
-                income_categories, transfer_categories,
+                INCOME_CATEGORIES, TRANSFER_CATEGORIES,
             )
             points.append(SpendingBarPoint(
                 label=label,
