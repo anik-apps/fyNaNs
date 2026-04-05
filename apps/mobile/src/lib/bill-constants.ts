@@ -1,4 +1,3 @@
-// apps/mobile/src/lib/bill-constants.ts
 export const BILL_STATUS_LABELS: Record<string, string> = {
   overdue: "Overdue",
   due_soon: "Due Soon",

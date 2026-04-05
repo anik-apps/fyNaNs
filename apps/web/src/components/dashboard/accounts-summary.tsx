@@ -24,7 +24,6 @@ interface AccountsSummaryProps {
   accountsByType: Record<string, AccountItem[]>;
 }
 
-
 const LIABILITY_TYPES = new Set(["credit", "loan"]);
 
 function sumBalances(accounts: AccountItem[]): number {

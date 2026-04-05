@@ -45,7 +45,6 @@ interface Transaction {
   is_pending: boolean;
 }
 
-
 const TIME_RANGES = [
   { value: "30d", label: "30d" },
   { value: "90d", label: "90d" },

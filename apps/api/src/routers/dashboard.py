@@ -236,8 +236,8 @@ async def _compute_period_totals(
     user_id: str,
     period_start: date,
     period_end: date,
-    income_categories: set[str],
-    transfer_categories: set[str],
+    income_categories: frozenset[str],
+    transfer_categories: frozenset[str],
 ) -> tuple[float, float]:
     """Compute total spending and income for a period.
 

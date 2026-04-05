@@ -15,7 +15,6 @@ interface AccountCardProps {
   last_synced: string | null;
 }
 
-
 export function AccountCard({
   id,
   name,

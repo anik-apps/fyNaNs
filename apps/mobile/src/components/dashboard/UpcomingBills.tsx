@@ -13,7 +13,6 @@ interface Bill {
   is_auto_pay: boolean;
 }
 
-
 export function UpcomingBills({ bills }: { bills: Bill[] }) {
   const { theme } = useTheme();
 
