@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
-import { formatCurrency, formatDate, formatRelativeDate } from "@/src/lib/utils";
+import { formatCurrency, formatDate, getDateGroupLabel } from "@/src/lib/utils";
 import { getDisplayType } from "@/src/lib/transaction-utils";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { getCategoryIcon, getCategoryIconBg } from "@/src/lib/category-icons";
@@ -18,20 +18,6 @@ interface Transaction {
 interface DateGroup {
   label: string;
   transactions: Transaction[];
-}
-
-function getDateGroupLabel(dateStr: string): string {
-  const d = new Date(dateStr);
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const diffDays = Math.round(
-    (today.getTime() - target.getTime()) / (1000 * 60 * 60 * 24)
-  );
-
-  if (diffDays === 0) return "Today";
-  if (diffDays === 1) return "Yesterday";
-  return formatDate(d);
 }
 
 function groupByDate(transactions: Transaction[]): DateGroup[] {

@@ -4,6 +4,7 @@ from decimal import Decimal
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.constants import INCOME_CATEGORIES, TRANSFER_CATEGORIES
 from src.models.account import Account
 from src.models.bill import Bill
 from src.models.budget import Budget
@@ -272,9 +273,6 @@ async def _get_spending_comparison(
         prev_month_start = today.replace(month=today.month - 1, day=1)
     prev_month_end = current_month_start - timedelta(days=1)
 
-    income_categories = {"Income", "Salary", "Freelance", "Other Income", "Investments"}
-    transfer_categories = {"Transfer"}
-
     from src.models.category import Category
 
     async def _sum_spending(start: date, end: date) -> Decimal:
@@ -290,9 +288,9 @@ async def _get_spending_comparison(
         total = 0.0
         for amt_val, cat_name in result.all():
             amt = float(amt_val)
-            if cat_name in transfer_categories:
+            if cat_name in TRANSFER_CATEGORIES:
                 continue
-            if cat_name in income_categories or amt < 0:
+            if cat_name in INCOME_CATEGORIES or amt < 0:
                 continue  # Income — skip
             total += abs(amt)
         return Decimal(str(round(total, 2)))

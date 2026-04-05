@@ -12,9 +12,9 @@ import { apiFetch } from "@/lib/api-client";
 import { TransactionRow } from "@/components/transactions/transaction-row";
 import { ChartModal } from "@/components/dashboard/chart-modal";
 import {
-  Building2, Calendar, CreditCard, Expand, Landmark, PiggyBank,
-  Search, Trash2, TrendingUp, Wallet,
+  Building2, Calendar, Expand, Search, Trash2,
 } from "lucide-react";
+import { ACCOUNT_TYPE_CONFIG } from "@/lib/account-type-config";
 import {
   ResponsiveContainer, PieChart, Pie, Cell, Tooltip,
 } from "recharts";
@@ -44,14 +44,6 @@ interface Transaction {
   account_type: string;
   is_pending: boolean;
 }
-
-const TYPE_CONFIG: Record<string, { label: string; icon: typeof Wallet; color: string }> = {
-  checking: { label: "Checking", icon: Wallet, color: "text-blue-600 bg-blue-100 dark:bg-blue-900/30" },
-  savings: { label: "Savings", icon: PiggyBank, color: "text-green-600 bg-green-100 dark:bg-green-900/30" },
-  credit: { label: "Credit Card", icon: CreditCard, color: "text-orange-600 bg-orange-100 dark:bg-orange-900/30" },
-  investment: { label: "Investment", icon: TrendingUp, color: "text-purple-600 bg-purple-100 dark:bg-purple-900/30" },
-  loan: { label: "Loan", icon: Landmark, color: "text-red-600 bg-red-100 dark:bg-red-900/30" },
-};
 
 const TIME_RANGES = [
   { value: "30d", label: "30d" },
@@ -219,7 +211,7 @@ export default function AccountDetailPage() {
     return <div className="text-center py-12 text-muted-foreground">Account not found</div>;
   }
 
-  const config = TYPE_CONFIG[account.type] || { label: account.type, icon: Building2, color: "text-gray-600 bg-gray-100 dark:bg-gray-900/30" };
+  const config = ACCOUNT_TYPE_CONFIG[account.type] || { label: account.type, icon: Building2, color: "text-gray-600 bg-gray-100 dark:bg-gray-900/30" };
   const Icon = config.icon;
   const isLiability = account.type === "credit" || account.type === "loan";
 

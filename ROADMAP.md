@@ -40,6 +40,16 @@
 
 ## Tech Debt & Code Quality
 
+### Completed
+
+- [x] Fix N+1 queries in transaction_summary, list_plaid_items, get_budgets_with_spend
+- [x] Extract hardcoded income/transfer category constants (API)
+- [x] Consolidate ACCOUNT_TYPE_CONFIG across 3 web components
+- [x] Extract date grouping and bill status constants (mobile)
+- [x] Remove unused code: Pagination, serverFetch, useIsMobile/useIsDesktop, shared-types constants
+
+### Remaining
+
 - [ ] OAuth account linking: require email verification before linking to existing account
 - [ ] OCI Object Storage export: implement actual file upload in services/export.py
 - [ ] Mobile TypeScript strictness: replace ~257 `any` types with proper interfaces
@@ -48,6 +58,16 @@
 - [ ] Plaid OAuth redirect handling for production (required for major US banks)
 - [ ] Sphinx API documentation setup
 - [ ] Upgrade GitHub Actions from Node.js 20 to Node.js 24
+- [ ] Fix N+1 in dashboard _get_top_budgets (spend query per budget)
+- [ ] Fix N+1 in spending_history (_compute_period_totals called per month)
+- [ ] Add React.memo to list item components (web: transaction-row, bill-card, account-card, budget-progress)
+- [ ] Add React.memo to chart components (mobile: CategoryDonutChart, NetWorthChart, SpendingBarChart)
+- [ ] Create useChartSelection hook to consolidate 3 duplicate timeout patterns (mobile)
+- [ ] Fix useApi hook dependency array gap (mobile)
+- [ ] Add category_id ownership validation in create_transaction (API)
+- [ ] Increase test coverage: mobile components (25+ untested), web components (45+ untested), API email service
+- [ ] Consolidate Account interface — use shared-types instead of local definitions in web/mobile
+- [ ] Remove or complete api-client package (currently empty placeholder)
 
 ## Future Infrastructure
 

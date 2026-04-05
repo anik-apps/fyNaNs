@@ -3,6 +3,7 @@ import { View, Text, StyleSheet } from "react-native";
 import { formatCurrency, formatDate } from "@/src/lib/utils";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { getBillStatus } from "@fynans/shared-types";
+import { BILL_STATUS_COLORS } from "@/src/lib/bill-constants";
 
 interface Bill {
   id: string;
@@ -11,13 +12,6 @@ interface Bill {
   next_due_date: string;
   is_auto_pay: boolean;
 }
-
-const STATUS_COLORS: Record<string, string> = {
-  overdue: "#EF4444",
-  due_soon: "#F59E0B",
-  auto_pay: "#3B82F6",
-  upcoming: "#10B981",
-};
 
 export function UpcomingBills({ bills }: { bills: Bill[] }) {
   const { theme } = useTheme();
@@ -37,7 +31,7 @@ export function UpcomingBills({ bills }: { bills: Bill[] }) {
             (1000 * 60 * 60 * 24)
         );
         const status = getBillStatus(daysUntilDue, bill.is_auto_pay);
-        const dotColor = STATUS_COLORS[status] || theme.colors.textSecondary;
+        const dotColor = BILL_STATUS_COLORS[status] || theme.colors.textSecondary;
 
         return (
           <View key={bill.id} style={styles.billRow}>

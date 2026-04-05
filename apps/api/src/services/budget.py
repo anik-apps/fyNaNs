@@ -101,27 +101,27 @@ async def get_budgets_with_spend(
     db: AsyncSession, user_id: uuid.UUID
 ) -> list[dict]:
     """Get all budgets with computed current spend."""
-    result = await db.execute(select(Budget).where(Budget.user_id == user_id))
-    budgets = result.scalars().all()
+    # Fetch budgets with category info in one query
+    result = await db.execute(
+        select(Budget, Category.name, Category.color)
+        .join(Category, Budget.category_id == Category.id)
+        .where(Budget.user_id == user_id)
+    )
+    rows = result.all()
 
     budget_data = []
-    for budget in budgets:
+    for budget, cat_name, cat_color in rows:
+        # compute_current_spend is still per-budget (each has different period/dates)
         current_spend = await compute_current_spend(
             db, user_id, budget.category_id, budget.period
         )
-
-        # Get category info
-        cat_result = await db.execute(
-            select(Category).where(Category.id == budget.category_id)
-        )
-        cat = cat_result.scalar_one_or_none()
 
         budget_data.append(
             {
                 "id": budget.id,
                 "category_id": budget.category_id,
-                "category_name": cat.name if cat else None,
-                "category_color": cat.color if cat else None,
+                "category_name": cat_name,
+                "category_color": cat_color,
                 "amount_limit": str(budget.amount_limit),
                 "period": budget.period,
                 "current_spend": str(current_spend),

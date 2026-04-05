@@ -85,7 +85,6 @@ async def list_transactions_endpoint(
 
     # Enrich with account and category names
     from src.models.account import Account
-    from src.models.category import Category
 
     account_ids = {t.account_id for t in transactions}
     category_ids = {t.category_id for t in transactions if t.category_id}
@@ -135,39 +134,28 @@ async def transaction_summary(
         Transaction.date <= period_end,
     ]
 
-    # Query transactions grouped by category
+    # Query transactions grouped by category, with category name via LEFT JOIN
     result = await db.execute(
         select(
             Transaction.category_id,
             func.sum(Transaction.amount).label("total"),
             func.count().label("count"),
+            Category.name.label("category_name"),
         )
+        .outerjoin(Category, Transaction.category_id == Category.id)
         .where(*base_filter)
-        .group_by(Transaction.category_id)
+        .group_by(Transaction.category_id, Category.name)
     )
     rows = result.all()
 
     items = []
     for row in rows:
-        category_id = row.category_id
         total = Decimal(str(row.total))
-        count = row.count
-
-        # Get category name
-        cat_name = None
-        if category_id:
-            cat_result = await db.execute(
-                select(Category).where(Category.id == category_id)
-            )
-            cat = cat_result.scalar_one_or_none()
-            if cat:
-                cat_name = cat.name
-
         items.append(TransactionSummaryItem(
-            category_id=category_id,
-            category_name=cat_name,
+            category_id=row.category_id,
+            category_name=row.category_name,
             total=str(total),
-            count=count,
+            count=row.count,
         ))
 
     # Calculate total spending (positive amounts) and income (negative amounts) separately
