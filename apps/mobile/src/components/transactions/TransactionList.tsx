@@ -10,7 +10,7 @@ import {
 import { useRouter } from "expo-router";
 import { TransactionRow } from "./TransactionRow";
 import { useTheme } from "@/src/providers/ThemeProvider";
-import { formatDate } from "@/src/lib/utils";
+import { formatDate, getDateGroupLabel } from "@/src/lib/utils";
 
 interface Transaction {
   id: string;
@@ -38,20 +38,6 @@ interface TransactionListProps {
 interface TransactionSection {
   title: string;
   data: Transaction[];
-}
-
-function getDateGroupLabel(dateStr: string): string {
-  const d = new Date(dateStr);
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const diffDays = Math.round(
-    (today.getTime() - target.getTime()) / (1000 * 60 * 60 * 24)
-  );
-
-  if (diffDays === 0) return "Today";
-  if (diffDays === 1) return "Yesterday";
-  return formatDate(d);
 }
 
 function groupTransactionsByDate(

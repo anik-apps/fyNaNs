@@ -42,3 +42,17 @@ export function formatRelativeTime(date: string | Date): string {
   if (diffHours < 24) return `${diffHours}h ago`;
   return formatRelativeDate(d);
 }
+
+export function getDateGroupLabel(dateStr: string): string {
+  const d = new Date(dateStr);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const diffDays = Math.round(
+    (today.getTime() - target.getTime()) / (1000 * 60 * 60 * 24)
+  );
+
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  return formatDate(d);
+}

@@ -1,6 +1,7 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { formatCurrency, formatDate } from "@/src/lib/utils";
+import { BILL_STATUS_LABELS, BILL_STATUS_COLORS } from "@/src/lib/bill-constants";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import {
   getBillStatus,
@@ -18,19 +19,6 @@ interface BillCardProps {
   category_name?: string;
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  overdue: "Overdue",
-  due_soon: "Due Soon",
-  auto_pay: "Auto Pay",
-  upcoming: "Upcoming",
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  overdue: "#EF4444",
-  due_soon: "#F59E0B",
-  auto_pay: "#3B82F6",
-  upcoming: "#10B981",
-};
 
 export function BillCard({
   name,
@@ -45,7 +33,7 @@ export function BillCard({
     (new Date(next_due_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
   );
   const status = getBillStatus(daysUntilDue, is_auto_pay);
-  const statusColor = STATUS_COLORS[status] || theme.colors.textSecondary;
+  const statusColor = BILL_STATUS_COLORS[status] || theme.colors.textSecondary;
 
   return (
     <View
@@ -69,7 +57,7 @@ export function BillCard({
         </View>
         <View style={[styles.badge, { backgroundColor: `${statusColor}20` }]}>
           <Text style={[styles.badgeText, { color: statusColor }]}>
-            {STATUS_LABELS[status]}
+            {BILL_STATUS_LABELS[status]}
           </Text>
         </View>
       </View>
