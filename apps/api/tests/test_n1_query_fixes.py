@@ -248,7 +248,8 @@ async def test_budgets_spend_and_category_info(
 ):
     headers = budgets_multi["headers"]
 
-    resp = await client.get("/api/budgets", headers=headers)
+    # /api/budgets/overview returns BudgetOverviewItem with category_color and current_spend
+    resp = await client.get("/api/budgets/overview", headers=headers)
     assert resp.status_code == 200
 
     budgets = resp.json()
@@ -293,6 +294,6 @@ async def test_budgets_empty(
 ):
     headers = budgets_empty_user["headers"]
 
-    resp = await client.get("/api/budgets", headers=headers)
+    resp = await client.get("/api/budgets/overview", headers=headers)
     assert resp.status_code == 200
     assert resp.json() == []
