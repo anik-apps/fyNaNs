@@ -96,19 +96,20 @@ async def list_plaid_items(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # Fetch items with account counts in a single query
     result = await db.execute(
-        select(PlaidItem).where(PlaidItem.user_id == user.id)
+        select(
+            PlaidItem,
+            func.count(Account.id).label("account_count"),
+        )
+        .outerjoin(Account, Account.plaid_item_id == PlaidItem.id)
+        .where(PlaidItem.user_id == user.id)
+        .group_by(PlaidItem.id)
     )
-    items = result.scalars().all()
+    rows = result.all()
 
     response = []
-    for item in items:
-        # Count accounts for this item
-        count_result = await db.execute(
-            select(func.count()).where(Account.plaid_item_id == item.id)
-        )
-        account_count = count_result.scalar() or 0
-
+    for item, account_count in rows:
         response.append(PlaidItemResponse(
             id=item.id,
             institution_name=item.institution_name,
