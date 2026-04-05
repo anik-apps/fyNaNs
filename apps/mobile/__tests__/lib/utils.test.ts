@@ -44,28 +44,34 @@ describe("formatDate", () => {
 });
 
 describe("formatRelativeDate", () => {
-  it("returns 'Today' for a date that is the same calendar day", () => {
+  // formatRelativeDate uses Math.floor((now.getTime() - d.getTime()) / 86400000)
+  // so to get a stable "N days ago" we must pass a Date that is exactly N * 86400000 ms behind now.
+  const msPerDay = 1000 * 60 * 60 * 24;
+
+  it("returns 'Today' for a date within the last 24h", () => {
     const now = new Date();
-    // Build noon today in local time to avoid day-boundary edge cases
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
-    expect(formatRelativeDate(today)).toBe("Today");
+    // 1 hour ago — guaranteed to be 0 full days
+    const recent = new Date(now.getTime() - 1000 * 60 * 60);
+    expect(formatRelativeDate(recent)).toBe("Today");
   });
 
-  it("returns 'Yesterday' for yesterday's date", () => {
+  it("returns 'Yesterday' for a date ~1 day ago", () => {
     const now = new Date();
-    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 12, 0, 0);
+    // 1.5 days ago — Math.floor gives 1
+    const yesterday = new Date(now.getTime() - msPerDay * 1.5);
     expect(formatRelativeDate(yesterday)).toBe("Yesterday");
   });
 
   it("returns 'Xd ago' for dates 2–6 days ago", () => {
     const now = new Date();
-    const threeDaysAgo = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 3, 12, 0, 0);
+    // 3.5 days ago — Math.floor gives 3
+    const threeDaysAgo = new Date(now.getTime() - msPerDay * 3.5);
     expect(formatRelativeDate(threeDaysAgo)).toBe("3d ago");
   });
 
   it("returns a formatted date string for dates 7+ days ago", () => {
     const now = new Date();
-    const tenDaysAgo = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 10, 12, 0, 0);
+    const tenDaysAgo = new Date(now.getTime() - msPerDay * 10.5);
     const result = formatRelativeDate(tenDaysAgo);
     expect(result).not.toMatch(/^(\d+d ago|Today|Yesterday)$/);
   });
