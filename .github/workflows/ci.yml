@@ -52,6 +52,14 @@ jobs:
       - name: Install JS dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Mobile tests
+        working-directory: apps/mobile
+        run: pnpm test
+
+      - name: Web tests
+        working-directory: apps/web
+        run: pnpm test
+
       - name: TypeScript check
         working-directory: apps/web
         run: pnpm exec tsc --noEmit
