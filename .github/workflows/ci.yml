@@ -52,14 +52,6 @@ jobs:
       - name: Install JS dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Mobile tests
-        working-directory: apps/mobile
-        run: pnpm test
-
-      - name: Web tests
-        working-directory: apps/web
-        run: pnpm test
-
       - name: TypeScript check
         working-directory: apps/web
         run: pnpm exec tsc --noEmit
@@ -69,6 +61,33 @@ jobs:
         env:
           NEXT_PUBLIC_API_URL: http://localhost:8888
         run: pnpm build
+
+  test-frontend:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Mobile tests
+        working-directory: apps/mobile
+        run: pnpm test
+
+      - name: Web tests
+        working-directory: apps/web
+        run: pnpm test
 
   test-unit:
     name: Unit Tests
