@@ -61,6 +61,7 @@ fyNaNs/
 │   │   │   ├── main.py               # FastAPI app entry point, CORS, rate limit middleware
 │   │   │   ├── core/
 │   │   │   │   ├── config.py         # App settings from env vars (pydantic-settings)
+│   │   │   │   ├── constants.py      # Shared constants (income/transfer category sets)
 │   │   │   │   ├── database.py       # Async SQLAlchemy engine + session factory + query timing events
 │   │   │   │   ├── metrics.py        # Prometheus metric definitions (operational + business)
 │   │   │   │   ├── logging_config.py # Structured JSON logging setup (python-json-logger)
@@ -144,7 +145,7 @@ fyNaNs/
 │       └── src/
 │           ├── components/            # Reusable UI components per feature
 │           ├── hooks/                 # useAuth, useApi, useBiometric, usePushNotifications
-│           ├── lib/                   # API client, auth storage, Plaid Link helper, constants
+│           ├── lib/                   # API client, auth storage, Plaid Link helper, bill-constants, utils
 │           └── providers/             # AuthProvider, ThemeProvider
 ├── packages/
 │   ├── api-client/                   # Auto-generated TypeScript API client (openapi-ts + @hey-api/client-fetch)
@@ -155,8 +156,7 @@ fyNaNs/
 │           ├── index.ts              # Barrel re-exports
 │           ├── accounts.ts           # Account type constants and labels
 │           ├── budgets.ts            # Budget period constants and thresholds
-│           ├── bills.ts              # Bill frequency constants and status helpers
-│           └── constants.ts          # App-wide constants (notifications, theme, pagination)
+│           └── bills.ts              # Bill frequency constants and status helpers
 ├── grafana/
 │   └── dashboards/                   # Grafana dashboard JSON files (auto-provisioned on deploy)
 │       ├── api-overview.json         # Request rate, error rate, latency percentiles
@@ -251,7 +251,7 @@ All secrets are managed in GitHub → Settings → Secrets and variables → Act
 
 ```
 Push to main
-  → CI: lint, unit tests, integration tests (mandatory)
+  → CI: lint, frontend tests (Jest/Vitest), unit tests, integration tests (mandatory)
   → Deploy: build ARM64 images on self-hosted runner → push to GHCR
   → Copy configs (docker-compose, Caddyfile, alloy-config)
   → Generate .env.production from GitHub secrets
