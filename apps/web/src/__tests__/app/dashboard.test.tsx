@@ -22,7 +22,9 @@ describe("Dashboard Components", () => {
       render(
         <NetWorthCard totalAssets="0" totalLiabilities="0" netWorth="0" />
       );
-      expect(screen.getByText("$0.00")).toBeInTheDocument();
+      // Multiple $0.00 elements (net worth, assets, liabilities) — use getAllByText
+      const zeros = screen.getAllByText("$0.00");
+      expect(zeros.length).toBeGreaterThanOrEqual(1);
     });
   });
 
@@ -49,7 +51,8 @@ describe("Dashboard Components", () => {
         />
       );
       expect(screen.getByText("Food")).toBeInTheDocument();
-      expect(screen.getByText("$160.00")).toBeInTheDocument();
+      // Amount is rendered as "$160.00 / $200.00" in one text node
+      expect(screen.getByText(/\$160\.00/)).toBeInTheDocument();
     });
   });
 
