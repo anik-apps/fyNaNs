@@ -78,6 +78,97 @@ async def test_completion_is_idempotent_on_rerun(db_session):
 
 
 @pytest.mark.asyncio
+async def test_behind_schedule_sends_notification(db_session):
+    from datetime import timedelta
+
+    user = User(email="j-behind@example.com", name="JB", password_hash="x")
+    db_session.add(user)
+    await db_session.flush()
+    db_session.add(UserSettings(user_id=user.id))
+    acct = Account(
+        user_id=user.id, name="s", institution_name="Chase", type="savings",
+        balance=Decimal("100"), is_manual=True,
+    )
+    db_session.add(acct)
+    await db_session.flush()
+    today = date(2026, 4, 16)
+    db_session.add(SavingsGoal(
+        user_id=user.id, name="Car", target_amount=Decimal("10000"),
+        target_date=today + timedelta(days=180),
+        linked_account_id=acct.id, status="active",
+    ))
+    await db_session.commit()
+
+    await check_savings_goals(db_session, today=today)
+
+    notifs = (await db_session.execute(
+        select(Notification).where(Notification.type == "savings_goal_behind")
+    )).scalars().all()
+    assert len(notifs) == 1
+    assert notifs[0].period_key == "2026-04"
+
+
+@pytest.mark.asyncio
+async def test_behind_schedule_deduped_within_month(db_session):
+    from datetime import timedelta
+
+    user = User(email="j-dedup@example.com", name="JD", password_hash="x")
+    db_session.add(user)
+    await db_session.flush()
+    db_session.add(UserSettings(user_id=user.id))
+    acct = Account(
+        user_id=user.id, name="s", institution_name="Chase", type="savings",
+        balance=Decimal("0"), is_manual=True,
+    )
+    db_session.add(acct)
+    await db_session.flush()
+    today = date(2026, 4, 16)
+    db_session.add(SavingsGoal(
+        user_id=user.id, name="Boat", target_amount=Decimal("10000"),
+        target_date=today + timedelta(days=180),
+        linked_account_id=acct.id, status="active",
+    ))
+    await db_session.commit()
+
+    await check_savings_goals(db_session, today=today)
+    await check_savings_goals(db_session, today=today)
+
+    notifs = (await db_session.execute(
+        select(Notification).where(Notification.type == "savings_goal_behind")
+    )).scalars().all()
+    assert len(notifs) == 1
+
+
+@pytest.mark.asyncio
+async def test_behind_schedule_skipped_when_target_passed(db_session):
+    from datetime import timedelta
+
+    user = User(email="j-passed@example.com", name="JP", password_hash="x")
+    db_session.add(user)
+    await db_session.flush()
+    db_session.add(UserSettings(user_id=user.id))
+    acct = Account(
+        user_id=user.id, name="s", institution_name="Chase", type="savings",
+        balance=Decimal("0"), is_manual=True,
+    )
+    db_session.add(acct)
+    await db_session.flush()
+    today = date(2026, 4, 16)
+    db_session.add(SavingsGoal(
+        user_id=user.id, name="Late", target_amount=Decimal("10000"),
+        target_date=today - timedelta(days=1),
+        linked_account_id=acct.id, status="active",
+    ))
+    await db_session.commit()
+
+    await check_savings_goals(db_session, today=today)
+    notifs = (await db_session.execute(
+        select(Notification).where(Notification.type == "savings_goal_behind")
+    )).scalars().all()
+    assert notifs == []
+
+
+@pytest.mark.asyncio
 async def test_recovery_scan_backfills_missing_notification(db_session):
     """Simulate a crash: goal is in completed status but has no notification."""
     user = User(email="j-recover@example.com", name="JR", password_hash="x")

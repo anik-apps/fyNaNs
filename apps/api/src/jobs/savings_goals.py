@@ -9,7 +9,12 @@ from src.models.notification import Notification
 from src.models.savings_goal import SavingsGoal
 from src.models.user_settings import UserSettings
 from src.services.notification import create_notification
-from src.services.savings_goal import compute_current_amount
+from src.services.savings_goal import (
+    BEHIND_THRESHOLD,
+    compute_actual_monthly,
+    compute_current_amount,
+    compute_required_monthly,
+)
 
 
 async def check_savings_goals(db: AsyncSession, today: date | None = None) -> None:
@@ -50,7 +55,26 @@ async def check_savings_goals(db: AsyncSession, today: date | None = None) -> No
                 )
             continue
 
-        # Behind-schedule path implemented in Task 10.
+        # --- Behind-schedule ---
+        if goal.target_date is not None and goal.target_date > today:
+            required = compute_required_monthly(
+                current, goal.target_amount, goal.target_date, today
+            )
+            actual = await compute_actual_monthly(db, goal, today)
+            if required is not None and actual < required * BEHIND_THRESHOLD:
+                await create_notification(
+                    db,
+                    user_id=goal.user_id,
+                    notif_type="savings_goal_behind",
+                    reference_id=goal.id,
+                    period_key=today.strftime("%Y-%m"),
+                    title=f"{goal.name} behind schedule",
+                    body=(
+                        f"You're saving ${actual}/mo; need ${required}/mo "
+                        f"to hit {goal.target_date.isoformat()}"
+                    ),
+                )
+        await db.commit()
 
 
 async def _backfill_missing_completion_notifications(db: AsyncSession) -> None:
