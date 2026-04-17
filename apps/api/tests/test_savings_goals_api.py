@@ -162,3 +162,113 @@ async def test_cannot_access_other_users_goal(
     gid = c.json()["id"]
     r = await client.get(f"/api/goals/{gid}", headers=other_user_auth_headers)
     assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_reopen_requires_completed_status(client, auth_headers):
+    c = await client.post("/api/goals", headers=auth_headers, json={
+        "name": "R", "target_amount": "100",
+    })
+    gid = c.json()["id"]
+    r = await client.post(f"/api/goals/{gid}/reopen", headers=auth_headers, json={
+        "new_target_amount": "200",
+    })
+    assert r.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_reopen_completed_goal_with_raised_target(
+    client, auth_headers, db_session
+):
+    from datetime import UTC, datetime
+
+    from sqlalchemy import select
+
+    from src.models.savings_goal import SavingsGoal
+
+    c = await client.post("/api/goals", headers=auth_headers, json={
+        "name": "RC", "target_amount": "100",
+    })
+    gid = c.json()["id"]
+
+    r = await db_session.execute(select(SavingsGoal).where(SavingsGoal.name == "RC"))
+    g = r.scalar_one()
+    g.status = "completed"
+    g.completed_at = datetime.now(UTC)
+    await db_session.commit()
+
+    resp = await client.post(f"/api/goals/{gid}/reopen", headers=auth_headers, json={
+        "new_target_amount": "500",
+    })
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["status"] == "active"
+    assert Decimal(str(data["target_amount"])) == Decimal("500.00")
+    assert data["completed_at"] is None
+    assert data["celebrated_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_reopen_rejects_target_not_above_current(
+    client, auth_headers, db_session
+):
+    from datetime import UTC, date, datetime
+    from decimal import Decimal
+
+    from sqlalchemy import select
+
+    from src.models.savings_goal import SavingsGoal, SavingsGoalContribution
+
+    c = await client.post("/api/goals", headers=auth_headers, json={
+        "name": "RR", "target_amount": "100",
+    })
+    gid = c.json()["id"]
+    r = await db_session.execute(select(SavingsGoal).where(SavingsGoal.name == "RR"))
+    g = r.scalar_one()
+    g.status = "completed"
+    g.completed_at = datetime.now(UTC)
+    db_session.add(SavingsGoalContribution(
+        goal_id=g.id, contribution_date=date.today(), amount=Decimal("200"),
+    ))
+    await db_session.commit()
+
+    resp = await client.post(f"/api/goals/{gid}/reopen", headers=auth_headers, json={
+        "new_target_amount": "150",
+    })
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_acknowledge_no_op_when_not_completed(client, auth_headers):
+    c = await client.post("/api/goals", headers=auth_headers, json={
+        "name": "A", "target_amount": "100",
+    })
+    gid = c.json()["id"]
+    r = await client.post(f"/api/goals/{gid}/acknowledge", headers=auth_headers)
+    assert r.status_code == 200
+    assert r.json()["celebrated_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_acknowledge_sets_celebrated_at_when_completed(
+    client, auth_headers, db_session,
+):
+    from datetime import UTC, datetime
+
+    from sqlalchemy import select
+
+    from src.models.savings_goal import SavingsGoal
+
+    c = await client.post("/api/goals", headers=auth_headers, json={
+        "name": "AC", "target_amount": "100",
+    })
+    gid = c.json()["id"]
+    r = await db_session.execute(select(SavingsGoal).where(SavingsGoal.name == "AC"))
+    g = r.scalar_one()
+    g.status = "completed"
+    g.completed_at = datetime.now(UTC)
+    await db_session.commit()
+
+    resp = await client.post(f"/api/goals/{gid}/acknowledge", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["celebrated_at"] is not None

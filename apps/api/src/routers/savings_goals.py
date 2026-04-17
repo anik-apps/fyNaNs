@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -14,12 +15,14 @@ from src.schemas.savings_goal import (
     ContributionResponse,
     GoalCreate,
     GoalDetailResponse,
+    GoalReopen,
     GoalResponse,
     GoalStatus,
     GoalUpdate,
 )
 from src.services.savings_goal import (
     SavingsGoalError,
+    compute_current_amount,
     load_goal,
     to_response,
     validate_linked_account,
@@ -157,4 +160,42 @@ async def archive_goal(
     goal.status = GoalStatus.ARCHIVED.value
     await db.commit()
     goal = await load_goal(db, goal.id, user.id)
+    return await to_response(db, goal)
+
+
+@router.post("/{goal_id}/reopen", response_model=GoalResponse)
+async def reopen_goal(
+    goal_id: uuid.UUID,
+    req: GoalReopen,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    goal = await _load_or_404(db, goal_id, user.id)
+    if goal.status != GoalStatus.COMPLETED.value:
+        raise HTTPException(400, "goal must be completed to reopen")
+
+    current = await compute_current_amount(db, goal)
+    if req.new_target_amount <= current:
+        raise HTTPException(400, "new_target_amount must exceed current amount")
+
+    goal.target_amount = req.new_target_amount
+    goal.status = GoalStatus.ACTIVE.value
+    goal.completed_at = None
+    goal.celebrated_at = None
+    await db.commit()
+    goal = await load_goal(db, goal.id, user.id)
+    return await to_response(db, goal)
+
+
+@router.post("/{goal_id}/acknowledge", response_model=GoalResponse)
+async def acknowledge_goal(
+    goal_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    goal = await _load_or_404(db, goal_id, user.id)
+    if goal.status == GoalStatus.COMPLETED.value and goal.celebrated_at is None:
+        goal.celebrated_at = datetime.now(UTC)
+        await db.commit()
+        goal = await load_goal(db, goal.id, user.id)
     return await to_response(db, goal)
