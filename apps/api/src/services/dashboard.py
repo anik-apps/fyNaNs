@@ -333,6 +333,7 @@ async def _get_top_goals(
             SavingsGoal.user_id == user_id,
             SavingsGoal.status == "active",
         )
+        .order_by(SavingsGoal.created_at.asc())
     )
     goals = list(result.scalars().all())
     active_count = len(goals)
