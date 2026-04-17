@@ -272,3 +272,90 @@ async def test_acknowledge_sets_celebrated_at_when_completed(
     resp = await client.post(f"/api/goals/{gid}/acknowledge", headers=auth_headers)
     assert resp.status_code == 200
     assert resp.json()["celebrated_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_add_contribution_to_unlinked_goal(client, auth_headers):
+    c = await client.post("/api/goals", headers=auth_headers, json={
+        "name": "C", "target_amount": "1000",
+    })
+    gid = c.json()["id"]
+    r = await client.post(
+        f"/api/goals/{gid}/contributions",
+        headers=auth_headers,
+        json={"contribution_date": "2026-04-16", "amount": "250.00"},
+    )
+    assert r.status_code == 201
+    d = await client.get(f"/api/goals/{gid}", headers=auth_headers)
+    from decimal import Decimal
+    assert Decimal(str(d.json()["current_amount"])) == Decimal("250.00")
+
+
+@pytest.mark.asyncio
+async def test_contribution_rejected_on_linked_goal(
+    client, auth_headers, db_session,
+):
+    from decimal import Decimal
+
+    from sqlalchemy import select
+
+    from src.models.account import Account
+    from src.models.user import User
+
+    user = (await db_session.execute(
+        select(User).where(User.email == "goals@example.com")
+    )).scalar_one()
+    acct = Account(
+        user_id=user.id, name="Link", institution_name="Chase",
+        type="savings", balance=Decimal("0"), is_manual=True,
+    )
+    db_session.add(acct)
+    await db_session.commit()
+
+    c = await client.post("/api/goals", headers=auth_headers, json={
+        "name": "L",
+        "target_amount": "100",
+        "linked_account_id": str(acct.id),
+    })
+    assert c.status_code == 201
+    gid = c.json()["id"]
+    r = await client.post(
+        f"/api/goals/{gid}/contributions",
+        headers=auth_headers,
+        json={"contribution_date": "2026-04-16", "amount": "10"},
+    )
+    assert r.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_contribution_amount_zero_rejected(client, auth_headers):
+    c = await client.post("/api/goals", headers=auth_headers, json={
+        "name": "Z", "target_amount": "10",
+    })
+    gid = c.json()["id"]
+    r = await client.post(
+        f"/api/goals/{gid}/contributions",
+        headers=auth_headers,
+        json={"contribution_date": "2026-04-16", "amount": "0"},
+    )
+    assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_delete_contribution(client, auth_headers):
+    c = await client.post("/api/goals", headers=auth_headers, json={
+        "name": "D", "target_amount": "10",
+    })
+    gid = c.json()["id"]
+    a = await client.post(
+        f"/api/goals/{gid}/contributions",
+        headers=auth_headers,
+        json={"contribution_date": "2026-04-16", "amount": "5"},
+    )
+    cid = a.json()["id"]
+    r = await client.delete(
+        f"/api/goals/{gid}/contributions/{cid}", headers=auth_headers
+    )
+    assert r.status_code == 200
+    d = await client.get(f"/api/goals/{gid}", headers=auth_headers)
+    assert d.json()["contributions"] == []

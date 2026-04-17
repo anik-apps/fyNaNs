@@ -8,10 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.core.database import get_db
-from src.models.savings_goal import SavingsGoal
+from src.models.savings_goal import SavingsGoal, SavingsGoalContribution
 from src.models.user import User
 from src.routers.deps import get_current_user
 from src.schemas.savings_goal import (
+    ContributionCreate,
     ContributionResponse,
     GoalCreate,
     GoalDetailResponse,
@@ -199,3 +200,55 @@ async def acknowledge_goal(
         await db.commit()
         goal = await load_goal(db, goal.id, user.id)
     return await to_response(db, goal)
+
+
+@router.post(
+    "/{goal_id}/contributions",
+    response_model=ContributionResponse,
+    status_code=201,
+)
+async def add_contribution(
+    goal_id: uuid.UUID,
+    req: ContributionCreate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    goal = await _load_or_404(db, goal_id, user.id)
+    if goal.linked_account_id is not None:
+        raise HTTPException(400, "cannot add contributions to a linked goal")
+
+    c = SavingsGoalContribution(
+        goal_id=goal.id,
+        contribution_date=req.contribution_date,
+        amount=req.amount,
+        note=req.note,
+    )
+    db.add(c)
+    await db.commit()
+    await db.refresh(c)
+    return ContributionResponse.model_validate(c)
+
+
+@router.delete("/{goal_id}/contributions/{contribution_id}")
+async def delete_contribution(
+    goal_id: uuid.UUID,
+    contribution_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    # Ownership: parent goal must belong to user.
+    await _load_or_404(db, goal_id, user.id)
+
+    r = await db.execute(
+        select(SavingsGoalContribution).where(
+            SavingsGoalContribution.id == contribution_id,
+            SavingsGoalContribution.goal_id == goal_id,
+        )
+    )
+    c = r.scalar_one_or_none()
+    if c is None:
+        raise HTTPException(404, "contribution not found")
+
+    await db.delete(c)
+    await db.commit()
+    return {"detail": "Contribution deleted"}
