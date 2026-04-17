@@ -11,6 +11,7 @@ export const ROUTES = {
   ACCOUNTS: "/accounts",
   TRANSACTIONS: "/transactions",
   BUDGETS: "/budgets",
+  GOALS: "/goals",
   BILLS: "/bills",
   SETTINGS: "/settings",
   SETTINGS_PROFILE: "/settings/profile",

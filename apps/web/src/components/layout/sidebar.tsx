@@ -7,6 +7,7 @@ import {
   Landmark,
   ArrowLeftRight,
   PiggyBank,
+  Target,
   Receipt,
   Settings,
 } from "lucide-react";
@@ -18,6 +19,7 @@ const navItems = [
   { href: ROUTES.ACCOUNTS, label: "Accounts", icon: Landmark },
   { href: ROUTES.TRANSACTIONS, label: "Transactions", icon: ArrowLeftRight },
   { href: ROUTES.BUDGETS, label: "Budgets", icon: PiggyBank },
+  { href: ROUTES.GOALS, label: "Savings Goals", icon: Target },
   { href: ROUTES.BILLS, label: "Bills", icon: Receipt },
   { href: ROUTES.SETTINGS, label: "Settings", icon: Settings },
 ];
