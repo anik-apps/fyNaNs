@@ -19,17 +19,17 @@
 - [x] Observability (Prometheus metrics, structured JSON logging, Grafana Cloud dashboards)
 - [x] Multi-service hosting (shared Caddy config, caddy-sites/ for additional services)
 
-## Phase 1.5 — Polish & Hardening (Current)
+## Phase 1.5 — Polish & Hardening
 
-- [ ] Plaid sandbox device testing (mobile emulator end-to-end)
-- [ ] Deploy observability stack (Alloy container, Grafana Cloud secrets)
-- [ ] Mobile app EAS production build and distribution
-- [ ] Screenshot-based UX review across web pages
-- [ ] Visual regression testing with Playwright snapshots
-- [ ] Replace placeholder app icons with brand assets
-- [ ] iOS build and testing
+- [x] Plaid sandbox device testing (mobile emulator end-to-end)
+- [x] Deploy observability stack (Alloy container, Grafana Cloud secrets)
+- [x] Mobile app EAS production build and distribution (Android)
+- [x] Visual regression testing with Playwright snapshots (36 baselines)
+- [x] Replace placeholder app icons with brand assets
+- [ ] Screenshot-based UX review across web pages (human pass)
+- [ ] iOS build and testing (deferred — requires Mac + Apple Developer account)
 
-## Phase 2 — Extended Features
+## Phase 2 — Extended Features (Current)
 
 - [ ] Investment tracking (portfolio view, gains/losses)
 - [ ] Credit score monitoring
