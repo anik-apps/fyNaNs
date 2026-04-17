@@ -51,6 +51,8 @@ async def create_notification(
             return None
         if notif_type.startswith("bill_") and not user_settings.notify_bill_reminders:
             return None
+        if notif_type.startswith("savings_goal_") and not user_settings.notify_savings_goals:
+            return None
 
     # Create notification record
     notif = Notification(
