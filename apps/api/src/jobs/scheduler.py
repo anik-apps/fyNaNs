@@ -18,6 +18,7 @@ def setup_jobs():
     from src.jobs.bill_reminders import run_bill_reminders
     from src.jobs.budget_alerts import run_budget_alerts
     from src.jobs.fallback_sync import run_fallback_sync
+    from src.jobs.savings_goals import run_savings_goals
 
     # Bill reminders: daily at 8:00 AM UTC
     scheduler.add_job(
@@ -47,5 +48,15 @@ def setup_jobs():
         hour=2,
         minute=0,
         id="fallback_sync",
+        replace_existing=True,
+    )
+
+    # Savings goals: daily at 09:00 UTC
+    scheduler.add_job(
+        run_savings_goals,
+        "cron",
+        hour=9,
+        minute=0,
+        id="savings_goals",
         replace_existing=True,
     )

@@ -3,23 +3,27 @@ from decimal import Decimal
 
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from src.core.constants import INCOME_CATEGORIES, TRANSFER_CATEGORIES
 from src.models.account import Account
 from src.models.bill import Bill
 from src.models.budget import Budget
 from src.models.category import Category
+from src.models.savings_goal import SavingsGoal
 from src.models.transaction import Transaction
 from src.schemas.dashboard import (
     AccountBalance,
     AccountBalancesByType,
     BudgetStatus,
     DashboardResponse,
+    GoalDashboardItem,
     NetWorthSummary,
     RecentTransaction,
     SpendingComparison,
     UpcomingBill,
 )
+from src.services.savings_goal import to_response as goal_to_response
 
 ASSET_TYPES = {"checking", "savings", "investment"}
 LIABILITY_TYPES = {"credit", "loan"}
@@ -40,6 +44,7 @@ async def get_dashboard(
     top_budgets = await _get_top_budgets(db, user_id, limit=5, today=today)
     upcoming_bills = await _get_upcoming_bills(db, user_id, days=7, today=today)
     spending_comparison = await _get_spending_comparison(db, user_id, today=today)
+    top_goals, active_goals_count = await _get_top_goals(db, user_id, today, limit=3)
 
     return DashboardResponse(
         net_worth=net_worth,
@@ -48,6 +53,8 @@ async def get_dashboard(
         top_budgets=top_budgets,
         upcoming_bills=upcoming_bills,
         spending_comparison=spending_comparison,
+        top_goals=top_goals,
+        active_goals_count=active_goals_count,
     )
 
 
@@ -309,3 +316,46 @@ async def _get_spending_comparison(
         difference=difference,
         percent_change=round(percent_change, 1) if percent_change is not None else None,
     )
+
+
+async def _get_top_goals(
+    db: AsyncSession, user_id: str, today: date, limit: int = 3
+) -> tuple[list[GoalDashboardItem], int]:
+    """Return top-N active goals by (behind-pace first, lowest progress first) + count.
+
+    NOTE: performs per-goal queries to compute progress + pace. Matches the
+    existing N+1 in _get_top_budgets; see ROADMAP tech-debt note for batching.
+    """
+    result = await db.execute(
+        select(SavingsGoal)
+        .options(selectinload(SavingsGoal.linked_account))
+        .where(
+            SavingsGoal.user_id == user_id,
+            SavingsGoal.status == "active",
+        )
+        .order_by(SavingsGoal.created_at.asc())
+    )
+    goals = list(result.scalars().all())
+    active_count = len(goals)
+
+    scored: list[tuple[int, int, GoalDashboardItem]] = []
+    for g in goals:
+        r = await goal_to_response(db, g, today=today)
+        pace_rank = {
+            "behind": 0, "target_passed": 0,
+            "on_pace": 1, "ahead": 2, None: 3,
+        }[r.pace_status.value if r.pace_status is not None else None]
+        item = GoalDashboardItem(
+            id=str(r.id),
+            name=r.name,
+            target_amount=r.target_amount,
+            current_amount=r.current_amount,
+            progress_pct=r.progress_pct,
+            pace_status=r.pace_status.value if r.pace_status else None,
+            target_date=r.target_date.isoformat() if r.target_date else None,
+        )
+        scored.append((pace_rank, r.progress_pct, item))
+
+    scored.sort(key=lambda t: (t[0], t[1]))
+    top = [item for _, _, item in scored[:limit]]
+    return top, active_count

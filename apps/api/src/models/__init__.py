@@ -8,6 +8,7 @@ from src.models.notification import Notification
 from src.models.oauth_account import OAuthAccount
 from src.models.plaid_item import PlaidItem
 from src.models.refresh_token import RefreshToken
+from src.models.savings_goal import SavingsGoal, SavingsGoalContribution
 from src.models.transaction import Transaction
 from src.models.user import User
 from src.models.user_settings import UserSettings
@@ -24,6 +25,8 @@ __all__ = [
     "OAuthAccount",
     "PlaidItem",
     "RefreshToken",
+    "SavingsGoal",
+    "SavingsGoalContribution",
     "Transaction",
     "User",
     "UserSettings",

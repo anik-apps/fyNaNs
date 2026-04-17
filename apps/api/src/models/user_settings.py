@@ -16,6 +16,7 @@ class UserSettings(BaseModel):
     theme: Mapped[str] = mapped_column(String(20), default="system", nullable=False)
     notify_bill_reminders: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     notify_budget_alerts: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    notify_savings_goals: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     notify_email: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     notify_push: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 

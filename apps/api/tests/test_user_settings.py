@@ -31,3 +31,25 @@ async def test_update_settings(client: AsyncClient, auth_headers: dict):
     assert response.status_code == 200
     assert response.json()["theme"] == "dark"
     assert response.json()["notify_push"] is False
+
+
+@pytest.mark.asyncio
+async def test_update_notify_savings_goals(client: AsyncClient, auth_headers: dict):
+    # Default should be True
+    get_resp = await client.get("/api/user/settings", headers=auth_headers)
+    assert get_resp.status_code == 200
+    assert get_resp.json()["notify_savings_goals"] is True
+
+    # Toggle to False via PUT
+    update_resp = await client.put(
+        "/api/user/settings",
+        headers=auth_headers,
+        json={"notify_savings_goals": False},
+    )
+    assert update_resp.status_code == 200
+    assert update_resp.json()["notify_savings_goals"] is False
+
+    # Read back to confirm persistence
+    reread = await client.get("/api/user/settings", headers=auth_headers)
+    assert reread.status_code == 200
+    assert reread.json()["notify_savings_goals"] is False

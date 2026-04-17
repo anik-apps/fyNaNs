@@ -23,6 +23,7 @@ class SettingsResponse(BaseModel):
     theme: str
     notify_bill_reminders: bool
     notify_budget_alerts: bool
+    notify_savings_goals: bool
     notify_email: bool
     notify_push: bool
 
@@ -33,5 +34,6 @@ class SettingsUpdateRequest(BaseModel):
     theme: Literal["light", "dark", "system"] | None = None
     notify_bill_reminders: bool | None = None
     notify_budget_alerts: bool | None = None
+    notify_savings_goals: bool | None = None
     notify_email: bool | None = None
     notify_push: bool | None = None
