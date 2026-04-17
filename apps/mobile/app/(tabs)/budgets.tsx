@@ -11,6 +11,7 @@ import {
 import { Plus, Wallet } from "lucide-react-native";
 import { BudgetCard } from "@/src/components/budgets/BudgetCard";
 import { BudgetForm } from "@/src/components/budgets/BudgetForm";
+import { GoalsSection } from "@/src/components/goals/GoalsSection";
 import { EmptyState } from "@/src/components/shared/EmptyState";
 import { ErrorView } from "@/src/components/shared/ErrorView";
 import { useApi } from "@/src/hooks/useApi";
@@ -85,6 +86,7 @@ export default function BudgetsScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
         contentContainerStyle={styles.list}
+        ListHeaderComponent={<GoalsSection />}
         ListEmptyComponent={
           <EmptyState
             icon={<Wallet color={theme.colors.primary} size={32} />}
