@@ -68,6 +68,16 @@ class SpendingComparison(BaseModel):
     percent_change: float | None  # None if previous month was zero
 
 
+class GoalDashboardItem(BaseModel):
+    id: str
+    name: str
+    target_amount: Decimal
+    current_amount: Decimal
+    progress_pct: int
+    pace_status: str | None  # ahead | on_pace | behind | target_passed | null
+    target_date: str | None
+
+
 class DashboardResponse(BaseModel):
     net_worth: NetWorthSummary
     accounts_by_type: AccountBalancesByType
@@ -75,3 +85,5 @@ class DashboardResponse(BaseModel):
     top_budgets: list[BudgetStatus]
     upcoming_bills: list[UpcomingBill]
     spending_comparison: SpendingComparison
+    top_goals: list[GoalDashboardItem] = []
+    active_goals_count: int = 0
