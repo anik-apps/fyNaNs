@@ -23,6 +23,7 @@ from src.routers import (
     health,
     notifications,
     plaid,
+    savings_goals,
     transactions,
     user,
 )
@@ -109,6 +110,7 @@ api_router.include_router(transactions.router)
 api_router.include_router(categories.router)
 api_router.include_router(budgets.router)
 api_router.include_router(bills.router)
+api_router.include_router(savings_goals.router)
 api_router.include_router(notifications.router)
 api_router.include_router(device_tokens.router)
 api_router.include_router(dashboard.router)
