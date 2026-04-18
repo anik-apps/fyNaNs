@@ -14,6 +14,7 @@ import { SpendingComparison } from "@/src/components/dashboard/SpendingCompariso
 import { BudgetBars } from "@/src/components/dashboard/BudgetBars";
 import { UpcomingBills } from "@/src/components/dashboard/UpcomingBills";
 import { RecentTransactions } from "@/src/components/dashboard/RecentTransactions";
+import { GoalsNeedingAttentionCard } from "@/src/components/dashboard/GoalsNeedingAttentionCard";
 import { apiFetch } from "@/src/lib/api-client";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { ErrorView } from "@/src/components/shared/ErrorView";
@@ -79,6 +80,10 @@ export default function DashboardScreen() {
         <SpendingComparison data={data.spending_comparison} />
       )}
       {data?.top_budgets && <BudgetBars budgets={data.top_budgets} />}
+      <GoalsNeedingAttentionCard
+        topGoals={data?.top_goals ?? []}
+        activeCount={data?.active_goals_count ?? 0}
+      />
       {data?.upcoming_bills && <UpcomingBills bills={data.upcoming_bills} />}
       {data?.recent_transactions && (
         <RecentTransactions
