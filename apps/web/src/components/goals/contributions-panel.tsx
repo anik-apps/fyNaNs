@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,10 +15,16 @@ export function ContributionsPanel({
   contributions: Contribution[];
   onChanged: () => void;
 }) {
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  // Empty on first render (SSR + client init) to avoid hydration mismatch;
+  // populated on mount.
+  const [date, setDate] = useState("");
   const [amount, setAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    setDate(new Date().toISOString().slice(0, 10));
+  }, []);
 
   async function add(e: React.FormEvent) {
     e.preventDefault();
