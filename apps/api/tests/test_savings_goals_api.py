@@ -359,3 +359,51 @@ async def test_delete_contribution(client, auth_headers):
     assert r.status_code == 200
     d = await client.get(f"/api/goals/{gid}", headers=auth_headers)
     assert d.json()["contributions"] == []
+
+
+@pytest.mark.asyncio
+async def test_patch_lowers_target_below_current_flips_to_completed(
+    client: AsyncClient, auth_headers
+):
+    """Editing target below current should flip status immediately, not wait for the job."""
+    c = await client.post("/api/goals", headers=auth_headers, json={
+        "name": "Instant", "target_amount": "1000",
+    })
+    gid = c.json()["id"]
+    # Add a contribution of 800 so current=800, target=1000, still active
+    await client.post(
+        f"/api/goals/{gid}/contributions", headers=auth_headers,
+        json={"contribution_date": "2026-04-17", "amount": "800"},
+    )
+    # Lower the target to 500 via PATCH — current (800) >= target (500)
+    r = await client.patch(f"/api/goals/{gid}", headers=auth_headers, json={
+        "target_amount": "500",
+    })
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "completed"
+    assert body["completed_at"] is not None
+    assert body["celebrated_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_contribution_tipping_over_target_flips_to_completed(
+    client: AsyncClient, auth_headers
+):
+    """A contribution that brings current >= target should flip status immediately."""
+    c = await client.post("/api/goals", headers=auth_headers, json={
+        "name": "Tipping", "target_amount": "100",
+    })
+    gid = c.json()["id"]
+    # Single contribution of 100 should complete the goal
+    r = await client.post(
+        f"/api/goals/{gid}/contributions", headers=auth_headers,
+        json={"contribution_date": "2026-04-17", "amount": "100"},
+    )
+    assert r.status_code == 201
+
+    d = await client.get(f"/api/goals/{gid}", headers=auth_headers)
+    assert d.status_code == 200
+    body = d.json()
+    assert body["status"] == "completed"
+    assert body["completed_at"] is not None

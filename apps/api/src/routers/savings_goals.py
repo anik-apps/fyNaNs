@@ -23,6 +23,7 @@ from src.schemas.savings_goal import (
 )
 from src.services.savings_goal import (
     SavingsGoalError,
+    check_and_flip_completion,
     compute_current_amount,
     load_goal,
     to_response,
@@ -136,6 +137,10 @@ async def patch_goal(
         raise HTTPException(409, "account already has an active goal") from None
 
     goal = await load_goal(db, goal.id, user.id)
+    # Instant-completion check: if the edit put current >= target, flip now
+    # rather than waiting for the nightly job.
+    await check_and_flip_completion(db, goal)
+    goal = await load_goal(db, goal.id, user.id)
     return await to_response(db, goal)
 
 
@@ -226,6 +231,13 @@ async def add_contribution(
     db.add(c)
     await db.commit()
     await db.refresh(c)
+
+    # Re-fetch the goal (its contributions relationship is now stale) and
+    # check if this contribution tipped it over the finish line.
+    goal = await load_goal(db, goal.id, user.id)
+    if goal is not None:
+        await check_and_flip_completion(db, goal)
+
     return ContributionResponse.model_validate(c)
 
 
