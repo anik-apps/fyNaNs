@@ -1,11 +1,11 @@
 """Savings Goals service layer: progress, pace, required-monthly, validation."""
 
 import uuid
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_FLOOR, Decimal
 
 from dateutil.relativedelta import relativedelta
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -204,3 +204,54 @@ async def load_goal(
         .where(SavingsGoal.id == goal_id, SavingsGoal.user_id == user_id)
     )
     return r.scalar_one_or_none()
+
+
+async def check_and_flip_completion(
+    db: AsyncSession, goal: SavingsGoal
+) -> bool:
+    """Flip the goal to `completed` if it's active AND current >= target.
+
+    Called synchronously from write paths (PATCH, add-contribution) so that
+    user-initiated actions reflect completion immediately rather than waiting
+    for the nightly job. The scheduled job is still the authoritative
+    completion path for linked-account balance changes from Plaid sync.
+
+    Uses an optimistic guard (`WHERE status='active'`) so concurrent callers
+    don't double-flip. Emits the `savings_goal_completed` notification on a
+    successful flip; the notification service dedups via its unique index.
+
+    Returns True if this call performed the flip, False otherwise. Caller is
+    responsible for committing (this function issues db.commit()).
+    """
+    # Import here to avoid a circular import at module load
+    # (notification service -> user_settings -> nothing cyclical, but keep
+    # the pattern consistent with the job module).
+    from src.services.notification import create_notification
+
+    if goal.status != "active":
+        return False
+
+    current = await compute_current_amount(db, goal)
+    if current < goal.target_amount:
+        return False
+
+    updated = await db.execute(
+        update(SavingsGoal)
+        .where(and_(SavingsGoal.id == goal.id, SavingsGoal.status == "active"))
+        .values(status="completed", completed_at=datetime.now(UTC))
+    )
+    await db.commit()
+    if updated.rowcount != 1:
+        # Another writer won; nothing for us to do.
+        return False
+
+    await create_notification(
+        db,
+        user_id=goal.user_id,
+        notif_type="savings_goal_completed",
+        reference_id=goal.id,
+        period_key="completion",
+        title="🎉 Goal reached",
+        body=f"You hit your target for {goal.name}",
+    )
+    return True

@@ -8,6 +8,7 @@ import { SpendingChart } from "@/components/dashboard/spending-chart";
 import { BudgetBars } from "@/components/dashboard/budget-bars";
 import { UpcomingBills } from "@/components/dashboard/upcoming-bills";
 import { RecentTransactions } from "@/components/dashboard/recent-transactions";
+import { GoalsNeedingAttentionCard } from "@/components/dashboard/goals-needing-attention-card";
 import { apiFetch } from "@/lib/api-client";
 
 interface DashboardData {
@@ -61,6 +62,16 @@ interface DashboardData {
     account_type: string;
     is_pending: boolean;
   }>;
+  top_goals: Array<{
+    id: string;
+    name: string;
+    target_amount: string;
+    current_amount: string;
+    progress_pct: number;
+    pace_status: "ahead" | "on_pace" | "behind" | "target_passed" | null;
+    target_date: string | null;
+  }>;
+  active_goals_count: number;
 }
 
 function DashboardSkeleton() {
@@ -118,9 +129,13 @@ export default function DashboardPage() {
 
       <AccountsSummary accountsByType={data.accounts_by_type} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <BudgetBars budgets={data.top_budgets} />
         <UpcomingBills bills={data.upcoming_bills} />
+        <GoalsNeedingAttentionCard
+          topGoals={data.top_goals ?? []}
+          activeCount={data.active_goals_count ?? 0}
+        />
       </div>
 
       <RecentTransactions transactions={data.recent_transactions} />

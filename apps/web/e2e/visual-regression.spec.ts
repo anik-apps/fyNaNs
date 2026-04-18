@@ -39,6 +39,7 @@ const authPages = [
   { name: 'transactions', path: '/transactions' },
   { name: 'budgets', path: '/budgets' },
   { name: 'bills', path: '/bills' },
+  { name: 'goals', path: '/goals' },
   { name: 'settings', path: '/settings' },
   { name: 'settings-profile', path: '/settings/profile' },
   { name: 'settings-security', path: '/settings/security' },
