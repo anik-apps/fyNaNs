@@ -34,29 +34,29 @@ export default function GoalDetailPage({ params }: { params: Promise<{ id: strin
     }
   }, [goal?.id, goal?.status, goal?.celebrated_at, fireConfetti]);
 
-  if (error) return <div className="text-rose-600">Error: {error}</div>;
-  if (!goal) return <div className="text-zinc-500">Loading…</div>;
+  if (error) return <div className="text-destructive">Error: {error}</div>;
+  if (!goal) return <div className="text-muted-foreground">Loading…</div>;
 
   const isCelebration = goal.status === "completed" && goal.celebrated_at === null;
   const canAddContributions = goal.linked_account === null && goal.status === "active";
 
   return (
     <div className="space-y-5">
-      <button onClick={() => router.back()} className="text-sm text-zinc-500 hover:underline">← Back</button>
+      <button onClick={() => router.back()} className="text-sm text-muted-foreground hover:underline">← Back</button>
 
       <div
         className={
           "rounded-lg border p-5 " +
           (isCelebration
-            ? "border-amber-300 bg-gradient-to-r from-amber-50 to-yellow-50"
-            : "border-zinc-200 bg-white")
+            ? "border-amber-300 bg-gradient-to-r from-amber-50 to-yellow-50 dark:border-amber-800 dark:from-amber-950/30 dark:to-yellow-950/30"
+            : "border-border bg-card")
         }
       >
         <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold">{goal.name}</h1>
             {goal.linked_account && (
-              <div className="text-sm text-zinc-500">Linked · {goal.linked_account.name}</div>
+              <div className="text-sm text-muted-foreground">Linked · {goal.linked_account.name}</div>
             )}
           </div>
           <div className="flex gap-2">
@@ -69,11 +69,11 @@ export default function GoalDetailPage({ params }: { params: Promise<{ id: strin
 
         <div className="mt-3 text-3xl font-semibold">
           ${money(goal.current_amount)}
-          <span className="ml-2 text-base font-normal text-zinc-500">of ${money(goal.target_amount)}</span>
+          <span className="ml-2 text-base font-normal text-muted-foreground">of ${money(goal.target_amount)}</span>
         </div>
 
-        <div className="mt-3 h-3 overflow-hidden rounded-full bg-zinc-200">
-          <div className="h-full rounded-full bg-blue-500" style={{ width: `${Math.min(100, goal.progress_pct)}%` }} />
+        <div className="mt-3 h-3 overflow-hidden rounded-full bg-muted">
+          <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(100, goal.progress_pct)}%` }} />
         </div>
 
         {isCelebration && (
@@ -114,8 +114,8 @@ export default function GoalDetailPage({ params }: { params: Promise<{ id: strin
       )}
 
       {goal.notes && (
-        <div className="rounded-lg border border-zinc-200 bg-white p-4">
-          <div className="mb-1 text-xs font-semibold uppercase text-zinc-500">Notes</div>
+        <div className="rounded-lg border border-border bg-card p-4">
+          <div className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Notes</div>
           <div className="whitespace-pre-wrap text-sm">{goal.notes}</div>
         </div>
       )}

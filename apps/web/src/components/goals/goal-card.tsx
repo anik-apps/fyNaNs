@@ -6,10 +6,10 @@ import type { SavingsGoal } from "./types";
 import { money } from "./types";
 
 const PACE_CLASS: Record<PaceStatus, string> = {
-  ahead: "bg-green-100 text-green-700 border-green-200",
-  on_pace: "bg-blue-100 text-blue-700 border-blue-200",
-  behind: "bg-amber-100 text-amber-700 border-amber-200",
-  target_passed: "bg-rose-100 text-rose-700 border-rose-200",
+  ahead: "bg-green-100 text-green-800 border-green-200 dark:bg-green-950/40 dark:text-green-300 dark:border-green-900",
+  on_pace: "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900",
+  behind: "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900",
+  target_passed: "bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900",
 };
 
 const PACE_LABEL: Record<PaceStatus, string> = {
@@ -30,8 +30,8 @@ export function GoalCard({ goal }: { goal: SavingsGoal }) {
       className={
         "block rounded-lg border p-4 transition hover:shadow-sm " +
         (isCelebration
-          ? "border-amber-300 bg-gradient-to-r from-amber-50 to-yellow-50"
-          : "border-zinc-200 bg-white")
+          ? "border-amber-300 bg-gradient-to-r from-amber-50 to-yellow-50 dark:border-amber-800 dark:from-amber-950/30 dark:to-yellow-950/30"
+          : "border-border bg-card")
       }
     >
       <div className="flex items-start justify-between gap-3">
@@ -44,7 +44,7 @@ export function GoalCard({ goal }: { goal: SavingsGoal }) {
               </span>
             )}
           </div>
-          <div className="mt-0.5 text-sm text-zinc-500">
+          <div className="mt-0.5 text-sm text-muted-foreground">
             {goal.linked_account ? `Linked · ${goal.linked_account.name}` : "Manual"}
             {goal.target_date ? ` · Target ${goal.target_date}` : ""}
           </div>
@@ -53,12 +53,12 @@ export function GoalCard({ goal }: { goal: SavingsGoal }) {
           <div className="font-semibold">
             ${money(goal.current_amount)} / ${money(goal.target_amount)}
           </div>
-          <div className="text-xs text-zinc-500">{goal.progress_pct}%</div>
+          <div className="text-xs text-muted-foreground">{goal.progress_pct}%</div>
         </div>
       </div>
-      <div className="mt-3 h-2 overflow-hidden rounded-full bg-zinc-200">
+      <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
         <div
-          className="h-full rounded-full bg-blue-500"
+          className="h-full rounded-full bg-primary"
           style={{ width: `${Math.min(100, goal.progress_pct)}%` }}
         />
       </div>

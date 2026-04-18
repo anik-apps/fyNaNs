@@ -44,25 +44,25 @@ export function ContributionsPanel({
   }
 
   return (
-    <div className="rounded-lg border border-zinc-200 bg-white p-4">
+    <div className="rounded-lg border border-border bg-card p-4">
       <h2 className="mb-3 font-semibold">Contributions</h2>
       <form onSubmit={add} className="mb-3 flex gap-2">
         <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="max-w-[180px]" />
         <Input type="number" step="0.01" placeholder="Amount" value={amount} onChange={(e) => setAmount(e.target.value)} required />
         <Button type="submit" disabled={submitting}>Add</Button>
       </form>
-      {error && <div className="mb-2 text-sm text-rose-600">{error}</div>}
+      {error && <div className="mb-2 text-sm text-destructive">{error}</div>}
       {contributions.length === 0 ? (
-        <div className="text-sm text-zinc-500">No contributions yet.</div>
+        <div className="text-sm text-muted-foreground">No contributions yet.</div>
       ) : (
-        <ul className="divide-y divide-zinc-100">
+        <ul className="divide-y divide-border">
           {contributions.map((c) => (
             <li key={c.id} className="flex items-center justify-between py-2 text-sm">
               <div>
                 <div className="font-medium">${money(c.amount)}</div>
-                <div className="text-xs text-zinc-500">{c.contribution_date}{c.note ? ` · ${c.note}` : ""}</div>
+                <div className="text-xs text-muted-foreground">{c.contribution_date}{c.note ? ` · ${c.note}` : ""}</div>
               </div>
-              <Button variant="ghost" size="sm" onClick={() => del(c.id)} className="text-rose-600">Delete</Button>
+              <Button variant="ghost" size="sm" onClick={() => del(c.id)} className="text-destructive">Delete</Button>
             </li>
           ))}
         </ul>

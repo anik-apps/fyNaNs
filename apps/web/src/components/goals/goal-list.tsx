@@ -28,8 +28,8 @@ export function GoalList({ refreshKey }: { refreshKey: number }) {
     return () => { cancel = true; };
   }, [refreshKey]);
 
-  if (error) return <div className="text-rose-600">Error: {error}</div>;
-  if (active === null) return <div className="text-zinc-500">Loading…</div>;
+  if (error) return <div className="text-destructive">Error: {error}</div>;
+  if (active === null) return <div className="text-muted-foreground">Loading…</div>;
 
   const none = active.length === 0 && (completed?.length ?? 0) === 0 && (archived?.length ?? 0) === 0;
   if (none) {
@@ -56,7 +56,7 @@ export function GoalList({ refreshKey }: { refreshKey: number }) {
       )}
       {(archived?.length ?? 0) > 0 && (
         <details className="pt-2">
-          <summary className="cursor-pointer font-semibold text-zinc-700">
+          <summary className="cursor-pointer font-semibold text-foreground">
             Archived ({archived!.length})
           </summary>
           <div className="mt-3 space-y-3">
@@ -71,7 +71,7 @@ export function GoalList({ refreshKey }: { refreshKey: number }) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h2 className="mb-2 text-sm font-semibold uppercase text-zinc-500">{title}</h2>
+      <h2 className="mb-2 text-sm font-semibold uppercase text-muted-foreground">{title}</h2>
       <div className="space-y-3">{children}</div>
     </div>
   );

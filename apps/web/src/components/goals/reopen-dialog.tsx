@@ -47,7 +47,7 @@ export function ReopenDialog({
       <DialogContent className="sm:max-w-sm">
         <DialogHeader><DialogTitle>Raise Target</DialogTitle></DialogHeader>
         <form onSubmit={submit} className="space-y-3">
-          <div className="text-sm text-zinc-500">Current progress: ${Number(currentAmount).toFixed(2)}</div>
+          <div className="text-sm text-muted-foreground">Current progress: ${Number(currentAmount).toFixed(2)}</div>
           <div>
             <Label htmlFor="new-target">New target amount</Label>
             <Input
@@ -60,7 +60,7 @@ export function ReopenDialog({
               required
             />
           </div>
-          {error && <div className="text-sm text-rose-600">{error}</div>}
+          {error && <div className="text-sm text-destructive">{error}</div>}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
             <Button type="submit" disabled={submitting}>{submitting ? "Saving…" : "Reopen"}</Button>
