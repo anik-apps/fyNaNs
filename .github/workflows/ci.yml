@@ -252,4 +252,4 @@ jobs:
           path: |
             apps/api/junit-integration-results.xml
             apps/web/test-results/
-            apps/web/e2e/__screenshots__/
+          retention-days: 7
