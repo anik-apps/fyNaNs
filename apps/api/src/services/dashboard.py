@@ -1,7 +1,7 @@
 from datetime import date, timedelta
 from decimal import Decimal
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -257,26 +257,35 @@ async def _get_spending_comparison(
         prev_month_start = today.replace(month=today.month - 1, day=1)
     prev_month_end = current_month_start - timedelta(days=1)
 
-    from src.models.category import Category
-
     async def _sum_spending(start: date, end: date) -> Decimal:
+        # Transfers are excluded entirely; income (income category or
+        # negative amount) is skipped; the rest is summed as abs().
+        is_income = or_(
+            Category.name.in_(list(INCOME_CATEGORIES)),
+            Transaction.amount < 0,
+        )
         result = await db.execute(
-            select(Transaction.amount, Category.name)
+            select(
+                func.coalesce(
+                    func.sum(
+                        case((is_income, 0), else_=func.abs(Transaction.amount))
+                    ),
+                    0,
+                )
+            )
+            .select_from(Transaction)
             .outerjoin(Category, Transaction.category_id == Category.id)
             .where(
                 Transaction.user_id == user_id,
                 Transaction.date >= start,
                 Transaction.date <= end,
+                or_(
+                    Transaction.category_id.is_(None),
+                    Category.name.notin_(list(TRANSFER_CATEGORIES)),
+                ),
             )
         )
-        total = 0.0
-        for amt_val, cat_name in result.all():
-            amt = float(amt_val)
-            if cat_name in TRANSFER_CATEGORIES:
-                continue
-            if cat_name in INCOME_CATEGORIES or amt < 0:
-                continue  # Income — skip
-            total += abs(amt)
+        total = float(result.scalar_one())
         return Decimal(str(round(total, 2)))
 
     current_total = await _sum_spending(current_month_start, today)
