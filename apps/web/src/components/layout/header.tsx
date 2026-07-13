@@ -68,13 +68,18 @@ export function Header() {
           <Button variant="ghost" size="icon" asChild>
             <Link
               href="/notifications"
-              aria-label="Notifications"
+              aria-label={
+                unreadCount > 0
+                  ? `Notifications (${unreadCount} unread)`
+                  : "Notifications"
+              }
               className="relative"
             >
               <Bell className="h-5 w-5" />
               {unreadCount > 0 && (
                 <span
                   data-testid="unread-badge"
+                  aria-hidden="true"
                   className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold leading-none text-destructive-foreground"
                 >
                   {unreadCount > 9 ? "9+" : unreadCount}

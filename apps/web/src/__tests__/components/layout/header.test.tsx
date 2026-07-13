@@ -83,4 +83,17 @@ describe("Header notification bell", () => {
     const badge = await screen.findByTestId("unread-badge");
     expect(badge).toHaveTextContent("9+");
   });
+
+  it("announces the unread count in the bell's accessible label", async () => {
+    mockApiFetch.mockResolvedValue({ unread_count: 3 });
+    renderHeader();
+    expect(
+      await screen.findByRole("link", { name: "Notifications (3 unread)" })
+    ).toBeInTheDocument();
+    // The visual badge is redundant for screen readers.
+    expect(screen.getByTestId("unread-badge")).toHaveAttribute(
+      "aria-hidden",
+      "true"
+    );
+  });
 });

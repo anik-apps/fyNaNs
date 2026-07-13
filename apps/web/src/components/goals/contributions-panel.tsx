@@ -25,7 +25,7 @@ export function ContributionsPanel({
 }: {
   goalId: string;
   contributions: Contribution[];
-  onChanged: () => void;
+  onChanged: () => Promise<void> | void;
 }) {
   // Empty on first render (SSR + client init) to avoid hydration mismatch;
   // populated on mount.
@@ -34,7 +34,8 @@ export function ContributionsPanel({
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [confirmTarget, setConfirmTarget] = useState<Contribution | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  // A Set so concurrent deletes can't wipe each other's pending state.
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -60,15 +61,22 @@ export function ContributionsPanel({
   }
 
   async function del(cid: string) {
-    setDeletingId(cid);
+    setDeletingIds((prev) => new Set(prev).add(cid));
     setDeleteError(null);
     try {
       await apiFetch(`/api/goals/${goalId}/contributions/${cid}`, { method: "DELETE" });
-      onChanged();
+      // Wait for the parent to refresh the list before re-enabling the row —
+      // otherwise the deleted row becomes clickable again and a second
+      // delete would 404.
+      await onChanged();
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : "Failed to delete contribution");
     } finally {
-      setDeletingId(null);
+      setDeletingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(cid);
+        return next;
+      });
     }
   }
 
@@ -96,10 +104,10 @@ export function ContributionsPanel({
                 variant="ghost"
                 size="sm"
                 onClick={() => setConfirmTarget(c)}
-                disabled={deletingId === c.id}
+                disabled={deletingIds.has(c.id)}
                 className="text-destructive"
               >
-                {deletingId === c.id ? (
+                {deletingIds.has(c.id) ? (
                   <>
                     <Loader2 className="mr-1 h-3 w-3 animate-spin" />
                     Deleting…

@@ -103,6 +103,8 @@ export function NotificationList({
       queryClient.setQueryData<NotificationCache>(["notifications"], (prev) =>
         markPagesRead(prev, id)
       );
+      // The header bell badge reads its own query — keep it in sync.
+      queryClient.invalidateQueries({ queryKey: ["notifications-unread"] });
     } catch {
       // handled
     }
@@ -114,6 +116,8 @@ export function NotificationList({
       queryClient.setQueryData<NotificationCache>(["notifications"], (prev) =>
         markPagesRead(prev, "all")
       );
+      // The header bell badge reads its own query — keep it in sync.
+      queryClient.invalidateQueries({ queryKey: ["notifications-unread"] });
       onUnreadCountChange?.(0);
     } catch {
       // handled

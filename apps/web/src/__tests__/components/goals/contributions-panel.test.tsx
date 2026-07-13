@@ -78,6 +78,36 @@ describe("ContributionsPanel", () => {
     });
   });
 
+  it("keeps the row disabled until onChanged's refresh resolves", async () => {
+    mockApiFetch.mockResolvedValue({});
+    let resolveChanged!: () => void;
+    const onChanged = vi.fn(
+      () => new Promise<void>((resolve) => (resolveChanged = resolve))
+    );
+    const user = userEvent.setup();
+    render(
+      <ContributionsPanel
+        goalId="g1"
+        contributions={contributions}
+        onChanged={onChanged}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: /delete/i }));
+    await screen.findByText("Delete contribution?");
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+
+    // While the parent's refresh is in flight the row must stay disabled,
+    // otherwise a second click could re-delete a removed row (404).
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    expect(screen.getByRole("button", { name: /deleting/i })).toBeDisabled();
+
+    resolveChanged();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Delete" })).toBeEnabled()
+    );
+  });
+
   it("shows an inline error when the delete fails", async () => {
     mockApiFetch.mockRejectedValue(new Error("Server exploded"));
     const onChanged = vi.fn();
