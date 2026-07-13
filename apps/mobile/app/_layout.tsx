@@ -8,38 +8,15 @@ import {
 } from "react-native";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import {
-  QueryClient,
-  QueryClientProvider,
-  focusManager,
-} from "@tanstack/react-query";
+import { QueryClientProvider, focusManager } from "@tanstack/react-query";
 import { AuthProvider } from "@/src/providers/AuthProvider";
 import { ThemeProvider } from "@/src/providers/ThemeProvider";
 import { useBiometric } from "@/src/hooks/useBiometric";
 import { useAuth } from "@/src/hooks/useAuth";
-import { ApiError } from "@/src/lib/api-client";
+import { queryClient } from "@/src/lib/query-client";
 // Push notifications removed from Expo Go SDK 53+
 // import { usePushNotifications } from "@/src/hooks/usePushNotifications";
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 30_000,
-      retry: (failureCount, error) => {
-        // Client errors (4xx) won't succeed on retry; don't hammer the API.
-        if (
-          error instanceof ApiError &&
-          error.status >= 400 &&
-          error.status < 500
-        ) {
-          return false;
-        }
-        return failureCount < 3;
-      },
-    },
-  },
-});
 
 // Wire TanStack Query's focusManager to React Native's AppState so queries
 // refetch (when stale) as the app returns to the foreground.

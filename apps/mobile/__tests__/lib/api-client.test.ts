@@ -97,6 +97,35 @@ describe("api-client", () => {
     expect((err as ApiError).message).toBe("Not found");
   });
 
+  it("joins msg fields when a 422 detail is an array of validation errors", async () => {
+    setAccessToken(null);
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 422,
+      json: async () => ({
+        detail: [
+          { loc: ["body", "amount"], msg: "field required", type: "missing" },
+          { loc: ["body", "name"], msg: "string too short", type: "value_error" },
+        ],
+      }),
+    });
+
+    await expect(apiFetch("/api/test")).rejects.toThrow(
+      "field required; string too short"
+    );
+  });
+
+  it("falls back to a status message when detail is unusable", async () => {
+    setAccessToken(null);
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: async () => ({ detail: { nested: "object" } }),
+    });
+
+    await expect(apiFetch("/api/test")).rejects.toThrow("API error: 500");
+  });
+
   it("sets and gets access token", () => {
     expect(getAccessToken()).toBeNull();
     setAccessToken("test-token");

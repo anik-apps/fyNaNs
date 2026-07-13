@@ -37,7 +37,10 @@ export default function GoalsScreen() {
       </View>
     );
   }
-  if (error) return <ErrorView message={error.message} onRetry={() => refetch()} />;
+  // Keep showing cached goals if a background refetch fails.
+  if (error && !active) {
+    return <ErrorView message={error.message} onRetry={() => refetch()} />;
+  }
 
   if (!active || active.length === 0) {
     return (

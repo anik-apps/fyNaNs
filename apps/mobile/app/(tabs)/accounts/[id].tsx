@@ -127,7 +127,9 @@ export default function AccountDetailScreen() {
     );
   }
 
-  if (error || !account) {
+  // Keep showing the cached account if a background refetch fails; only
+  // fall back to the error view when there's no data to render.
+  if (!account) {
     return (
       <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
         <ErrorView

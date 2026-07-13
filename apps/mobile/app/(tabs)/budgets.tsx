@@ -68,7 +68,8 @@ export default function BudgetsScreen() {
     );
   }
 
-  if (error) {
+  // Keep showing cached budgets if a background refetch fails.
+  if (error && !data) {
     return (
       <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
         <ErrorView message={error.message} onRetry={() => refetch()} />

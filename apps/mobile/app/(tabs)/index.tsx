@@ -58,7 +58,9 @@ export default function DashboardScreen() {
     );
   }
 
-  if (error) {
+  // Only blank the screen when there's nothing to show; a failed background
+  // refetch should not wipe out previously loaded data.
+  if (error && !data) {
     return (
       <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
         <ErrorView message={error.message} onRetry={() => refetch()} />

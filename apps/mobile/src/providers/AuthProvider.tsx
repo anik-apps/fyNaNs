@@ -8,6 +8,7 @@ import {
 } from "@/src/lib/auth-storage";
 import { API_URL } from "@/src/lib/constants";
 import { setAccessToken as setApiAccessToken } from "@/src/lib/api-client";
+import { queryClient } from "@/src/lib/query-client";
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
 
 export interface AuthUser {
@@ -119,6 +120,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { requires_mfa: true, mfa_token: data.mfa_token };
       }
 
+      // Drop any cached data from a previous session before this user's
+      // queries start populating the cache.
+      queryClient.clear();
       updateAccessToken(data.access_token);
       setUser(data.user);
       await storeRefreshToken(data.refresh_token);
@@ -142,6 +146,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       const data = await response.json();
+      queryClient.clear();
       updateAccessToken(data.access_token);
       setUser(data.user);
       await storeRefreshToken(data.refresh_token);
@@ -168,6 +173,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       const data = await response.json();
+      queryClient.clear();
       updateAccessToken(data.access_token);
       setUser(data.user);
       await storeRefreshToken(data.refresh_token);
@@ -196,6 +202,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await deleteRefreshToken();
     updateAccessToken(null);
     setUser(null);
+    // Evict cached financial data so a later login (within gcTime) can't see
+    // the previous user's queries.
+    queryClient.clear();
   }, [accessToken]);
 
   const loginWithOAuth = useCallback(async (provider: string, idToken: string) => {
@@ -212,6 +221,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     const data = await response.json();
+    queryClient.clear();
     updateAccessToken(data.access_token);
     setUser(data.user);
     if (data.refresh_token) {

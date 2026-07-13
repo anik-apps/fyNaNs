@@ -66,7 +66,9 @@ export default function TransactionDetailScreen() {
     );
   }
 
-  if (error || !transaction) {
+  // Keep showing the cached transaction if a background refetch fails; only
+  // fall back to the error view when there's no data to render.
+  if (!transaction) {
     return (
       <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
         <Stack.Screen options={{ headerShown: false }} />

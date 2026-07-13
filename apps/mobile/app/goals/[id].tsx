@@ -8,6 +8,7 @@ import { useTheme } from "@/src/providers/ThemeProvider";
 import type { GoalCardGoal } from "@/src/components/goals/GoalCard";
 import { useRefreshOnFocus } from "@/src/hooks/useRefreshOnFocus";
 import { CardSkeleton } from "@/src/components/shared/LoadingSkeleton";
+import { ErrorView } from "@/src/components/shared/ErrorView";
 
 interface Contribution { id: string; contribution_date: string; amount: string; note: string | null }
 interface GoalDetail extends GoalCardGoal { contributions: Contribution[]; notes: string | null }
@@ -35,7 +36,14 @@ export default function GoalDetailScreen() {
     }
   }, [goal, firedConfetti]);
 
-  if (error) return <View style={{ padding: 20 }}><Text style={{ color: theme.colors.error }}>Error: {error.message}</Text></View>;
+  // Keep showing the cached goal if a background refetch fails.
+  if (error && !goal) {
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+        <ErrorView message={error.message} onRetry={() => refetch()} />
+      </View>
+    );
+  }
   if (!goal) {
     return (
       <View style={{ flex: 1, paddingTop: 12, backgroundColor: theme.colors.background }}>

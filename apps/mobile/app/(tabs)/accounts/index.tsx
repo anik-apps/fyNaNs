@@ -56,7 +56,8 @@ export default function AccountsScreen() {
     );
   }
 
-  if (error) {
+  // Keep showing cached accounts if a background refetch fails.
+  if (error && !data) {
     return (
       <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
         <ErrorView message={error.message} onRetry={() => refetch()} />

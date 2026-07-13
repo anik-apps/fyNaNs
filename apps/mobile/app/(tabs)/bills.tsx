@@ -75,7 +75,8 @@ export default function BillsScreen() {
     );
   }
 
-  if (error) {
+  // Keep showing cached bills if a background refetch fails.
+  if (error && !data) {
     return (
       <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
         <ErrorView message={error.message} onRetry={() => refetch()} />
