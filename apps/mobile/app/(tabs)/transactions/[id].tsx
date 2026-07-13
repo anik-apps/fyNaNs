@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
 } from "react-native";
 import { useLocalSearchParams, Stack, useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, Clock } from "lucide-react-native";
 import { apiFetch } from "@/src/lib/api-client";
@@ -44,6 +45,7 @@ export default function TransactionDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { theme } = useTheme();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const { data: transaction, isLoading, error, refetch } = useQuery({
     queryKey: ["transactions", id],
@@ -56,7 +58,9 @@ export default function TransactionDetailScreen() {
       <View
         style={[
           styles.screen,
-          { paddingTop: 12, backgroundColor: theme.colors.background },
+          // Match the loaded header's status-bar offset so content doesn't
+          // jump when the skeleton is replaced.
+          { paddingTop: insets.top + 12, backgroundColor: theme.colors.background },
         ]}
       >
         <Stack.Screen options={{ headerShown: false }} />
@@ -105,7 +109,17 @@ export default function TransactionDetailScreen() {
       <Stack.Screen options={{ headerShown: false }} />
 
       {/* Back header */}
-      <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
+      <View
+        style={[
+          styles.header,
+          {
+            borderBottomColor: theme.colors.border,
+            // Status-bar inset varies per device (notch / Dynamic Island);
+            // 12 matches the header's bottom padding.
+            paddingTop: insets.top + 12,
+          },
+        ]}
+      >
         <TouchableOpacity
           onPress={() => router.back()}
           style={styles.backBtn}
@@ -294,7 +308,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingTop: 56,
     paddingBottom: 12,
     borderBottomWidth: 1,
   },

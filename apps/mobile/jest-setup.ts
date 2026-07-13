@@ -15,6 +15,16 @@ jest.mock("expo-local-authentication", () => ({
   AuthenticationType: { FINGERPRINT: 1, FACIAL_RECOGNITION: 2 },
 }));
 
+// Mock react-native-safe-area-context with its official jest mock
+// (provides SafeAreaProvider and zero insets by default).
+jest.mock(
+  "react-native-safe-area-context",
+  () =>
+    jest.requireActual<{ default: unknown }>(
+      "react-native-safe-area-context/jest/mock"
+    ).default
+);
+
 // Mock expo-notifications
 jest.mock("expo-notifications", () => ({
   setNotificationHandler: jest.fn(),
