@@ -8,7 +8,7 @@ import {
   StyleSheet,
 } from "react-native";
 import { Plus, Wallet } from "lucide-react-native";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BudgetCard } from "@/src/components/budgets/BudgetCard";
 import { BudgetForm } from "@/src/components/budgets/BudgetForm";
 import { GoalsSection } from "@/src/components/goals/GoalsSection";
@@ -21,6 +21,7 @@ import { CardSkeleton } from "@/src/components/shared/LoadingSkeleton";
 
 export default function BudgetsScreen() {
   const { theme } = useTheme();
+  const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
   const [showForm, setShowForm] = useState(false);
 
@@ -36,21 +37,24 @@ export default function BudgetsScreen() {
     setRefreshing(false);
   }, [refetch]);
 
-  async function handleCreateBudget(budgetData: {
-    category_name: string;
-    limit_amount: number;
-    period: string;
-  }) {
-    try {
-      await apiFetch("/api/budgets", {
+  const createBudget = useMutation({
+    mutationFn: (budgetData: {
+      category_name: string;
+      limit_amount: number;
+      period: string;
+    }) =>
+      apiFetch("/api/budgets", {
         method: "POST",
         body: JSON.stringify(budgetData),
-      });
-      refetch();
-    } catch {
-      // Error handled by the form
-    }
-  }
+      }),
+    // Return the promise so mutateAsync (and the form's pending state)
+    // resolves only after the lists have refreshed.
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["budgets"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      ]),
+  });
 
   if (isLoading) {
     return (
@@ -126,7 +130,9 @@ export default function BudgetsScreen() {
       <BudgetForm
         visible={showForm}
         onClose={() => setShowForm(false)}
-        onSubmit={handleCreateBudget}
+        onSubmit={async (budgetData) => {
+          await createBudget.mutateAsync(budgetData);
+        }}
       />
     </View>
   );

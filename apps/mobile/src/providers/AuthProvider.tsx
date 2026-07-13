@@ -183,28 +183,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      const storedToken = await getRefreshToken();
-      if (storedToken && accessToken) {
-        await fetch(`${API_URL}/api/auth/logout`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify({ refresh_token: storedToken }),
-        });
+      try {
+        const storedToken = await getRefreshToken();
+        if (storedToken && accessToken) {
+          await fetch(`${API_URL}/api/auth/logout`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${accessToken}`,
+            },
+            body: JSON.stringify({ refresh_token: storedToken }),
+          });
+        }
+      } catch {
+        // Proceed with local cleanup even if server request fails
       }
-    } catch {
-      // Proceed with local cleanup even if server request fails
+      // Clear Google sign-in session (no-op if user didn't sign in via Google)
+      try { await GoogleSignin.signOut(); } catch {}
+      await deleteRefreshToken();
+    } finally {
+      // Always drop the local session: even if cleanup above rejects, logout
+      // must never leave the token/user usable (e.g. behind the app lock).
+      updateAccessToken(null);
+      setUser(null);
+      // Evict cached financial data so a later login (within gcTime) can't
+      // see the previous user's queries.
+      queryClient.clear();
     }
-    // Clear Google sign-in session (no-op if user didn't sign in via Google)
-    try { await GoogleSignin.signOut(); } catch {}
-    await deleteRefreshToken();
-    updateAccessToken(null);
-    setUser(null);
-    // Evict cached financial data so a later login (within gcTime) can't see
-    // the previous user's queries.
-    queryClient.clear();
   }, [accessToken]);
 
   const loginWithOAuth = useCallback(async (provider: string, idToken: string) => {
