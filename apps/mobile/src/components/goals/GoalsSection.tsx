@@ -2,7 +2,7 @@ import React from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { ChevronRight } from "lucide-react-native";
 import { useRouter } from "expo-router";
-import { useApi } from "@/src/hooks/useApi";
+import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/src/lib/api-client";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { GoalCard, type GoalCardGoal } from "./GoalCard";
@@ -10,7 +10,10 @@ import { GoalCard, type GoalCardGoal } from "./GoalCard";
 export function GoalsSection() {
   const { theme } = useTheme();
   const router = useRouter();
-  const { data: goals } = useApi<GoalCardGoal[]>(() => apiFetch("/api/goals?status=active"));
+  const { data: goals } = useQuery({
+    queryKey: ["goals", "active"],
+    queryFn: () => apiFetch<GoalCardGoal[]>("/api/goals?status=active"),
+  });
 
   const top = (goals ?? []).slice(0, 3);
 

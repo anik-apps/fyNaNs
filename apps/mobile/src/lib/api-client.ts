@@ -6,6 +6,20 @@ import {
   getDeviceInfo,
 } from "./auth-storage";
 
+/**
+ * Error thrown by apiFetch for non-ok responses. Carries the HTTP status so
+ * callers (e.g. the React Query retry predicate) can distinguish 4xx from 5xx.
+ */
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 let accessToken: string | null = null;
 let refreshPromise: Promise<boolean> | null = null;
 
@@ -71,6 +85,23 @@ async function getValidToken(): Promise<string | null> {
 }
 
 /**
+ * Convert a FastAPI error `detail` into a human-readable message. Plain
+ * errors use a string detail; 422 validation errors use an array of
+ * `{ msg, loc, ... }` objects, which would otherwise stringify as
+ * "[object Object]" in user-facing alerts.
+ */
+function formatErrorDetail(detail: unknown, status: number): string {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const msgs = detail
+      .map((item) => (typeof item?.msg === "string" ? item.msg : null))
+      .filter((msg): msg is string => Boolean(msg));
+    if (msgs.length > 0) return msgs.join("; ");
+  }
+  return `API error: ${status}`;
+}
+
+/**
  * Authenticated fetch wrapper for mobile API calls.
  * Handles token management, refresh, and retry on 401.
  */
@@ -116,10 +147,11 @@ export async function apiFetch<T>(
   }
 
   if (!response.ok) {
-    const error = await response
-      .json()
-      .catch(() => ({ detail: "Request failed" }));
-    throw new Error(error.detail || `API error: ${response.status}`);
+    const error = await response.json().catch(() => null);
+    throw new ApiError(
+      formatErrorDetail(error?.detail, response.status),
+      response.status
+    );
   }
 
   if (response.status === 204) {

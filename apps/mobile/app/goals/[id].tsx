@@ -1,10 +1,14 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { View, Text, ScrollView, Pressable, StyleSheet, TextInput, ActivityIndicator } from "react-native";
-import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
+import React, { useEffect, useState } from "react";
+import { View, Text, ScrollView, Pressable, StyleSheet, TextInput } from "react-native";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useQuery } from "@tanstack/react-query";
 import ConfettiCannon from "react-native-confetti-cannon";
 import { apiFetch } from "@/src/lib/api-client";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import type { GoalCardGoal } from "@/src/components/goals/GoalCard";
+import { useRefreshOnFocus } from "@/src/hooks/useRefreshOnFocus";
+import { CardSkeleton } from "@/src/components/shared/LoadingSkeleton";
+import { ErrorView } from "@/src/components/shared/ErrorView";
 
 interface Contribution { id: string; contribution_date: string; amount: string; note: string | null }
 interface GoalDetail extends GoalCardGoal { contributions: Contribution[]; notes: string | null }
@@ -15,22 +19,15 @@ export default function GoalDetailScreen() {
   const { theme } = useTheme();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const [goal, setGoal] = useState<GoalDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [contribDate, setContribDate] = useState(new Date().toISOString().slice(0, 10));
   const [contribAmount, setContribAmount] = useState("");
   const [firedConfetti, setFiredConfetti] = useState(false);
 
-  const reload = useCallback(async () => {
-    try {
-      const g = await apiFetch<GoalDetail>(`/api/goals/${id}`);
-      setGoal(g);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
-    }
-  }, [id]);
-
-  useFocusEffect(useCallback(() => { reload(); }, [reload]));
+  const { data: goal, error, refetch } = useQuery({
+    queryKey: ["goals", id],
+    queryFn: () => apiFetch<GoalDetail>(`/api/goals/${id}`),
+  });
+  useRefreshOnFocus(refetch);
 
   useEffect(() => {
     if (!goal) return;
@@ -39,8 +36,22 @@ export default function GoalDetailScreen() {
     }
   }, [goal, firedConfetti]);
 
-  if (error) return <View style={{ padding: 20 }}><Text style={{ color: theme.colors.error }}>Error: {error}</Text></View>;
-  if (!goal) return <ActivityIndicator style={{ marginTop: 40 }} />;
+  // Keep showing the cached goal if a background refetch fails.
+  if (error && !goal) {
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+        <ErrorView message={error.message} onRetry={() => refetch()} />
+      </View>
+    );
+  }
+  if (!goal) {
+    return (
+      <View style={{ flex: 1, paddingTop: 12, backgroundColor: theme.colors.background }}>
+        <CardSkeleton />
+        <CardSkeleton />
+      </View>
+    );
+  }
 
   const isCelebration = goal.status === "completed" && goal.celebrated_at === null;
   const canAddContributions = goal.linked_account === null && goal.status === "active";
@@ -52,17 +63,17 @@ export default function GoalDetailScreen() {
       body: JSON.stringify({ contribution_date: contribDate, amount: contribAmount }),
     });
     setContribAmount("");
-    await reload();
+    await refetch();
   }
 
   async function delContribution(cid: string) {
     await apiFetch(`/api/goals/${goal!.id}/contributions/${cid}`, { method: "DELETE" });
-    await reload();
+    await refetch();
   }
 
   async function acknowledge() {
     await apiFetch(`/api/goals/${goal!.id}/acknowledge`, { method: "POST" });
-    await reload();
+    await refetch();
   }
 
   async function archive() {

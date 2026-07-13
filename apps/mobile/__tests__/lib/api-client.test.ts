@@ -1,4 +1,9 @@
-import { apiFetch, setAccessToken, getAccessToken } from "@/src/lib/api-client";
+import {
+  apiFetch,
+  setAccessToken,
+  getAccessToken,
+  ApiError,
+} from "@/src/lib/api-client";
 
 // Mock fetch globally
 const mockFetch = jest.fn();
@@ -76,6 +81,49 @@ describe("api-client", () => {
     });
 
     await expect(apiFetch("/api/test")).rejects.toThrow("Server error");
+  });
+
+  it("throws ApiError carrying the HTTP status", async () => {
+    setAccessToken(null);
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      json: async () => ({ detail: "Not found" }),
+    });
+
+    const err: unknown = await apiFetch("/api/test").catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).status).toBe(404);
+    expect((err as ApiError).message).toBe("Not found");
+  });
+
+  it("joins msg fields when a 422 detail is an array of validation errors", async () => {
+    setAccessToken(null);
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 422,
+      json: async () => ({
+        detail: [
+          { loc: ["body", "amount"], msg: "field required", type: "missing" },
+          { loc: ["body", "name"], msg: "string too short", type: "value_error" },
+        ],
+      }),
+    });
+
+    await expect(apiFetch("/api/test")).rejects.toThrow(
+      "field required; string too short"
+    );
+  });
+
+  it("falls back to a status message when detail is unusable", async () => {
+    setAccessToken(null);
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: async () => ({ detail: { nested: "object" } }),
+    });
+
+    await expect(apiFetch("/api/test")).rejects.toThrow("API error: 500");
   });
 
   it("sets and gets access token", () => {

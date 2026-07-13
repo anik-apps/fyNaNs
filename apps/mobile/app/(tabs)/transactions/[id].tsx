@@ -4,13 +4,14 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  ActivityIndicator,
   TouchableOpacity,
 } from "react-native";
 import { useLocalSearchParams, Stack, useRouter } from "expo-router";
+import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, Clock } from "lucide-react-native";
-import { useApi } from "@/src/hooks/useApi";
 import { apiFetch } from "@/src/lib/api-client";
+import { useRefreshOnFocus } from "@/src/hooks/useRefreshOnFocus";
+import { CardSkeleton } from "@/src/components/shared/LoadingSkeleton";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { ErrorView } from "@/src/components/shared/ErrorView";
 import { formatCurrency } from "@/src/lib/utils";
@@ -44,26 +45,36 @@ export default function TransactionDetailScreen() {
   const { theme } = useTheme();
   const router = useRouter();
 
-  const { data: transaction, isLoading, error, refresh } = useApi<TransactionDetail>(
-    () => apiFetch<TransactionDetail>(`/api/transactions/${id}`)
-  );
+  const { data: transaction, isLoading, error, refetch } = useQuery({
+    queryKey: ["transactions", id],
+    queryFn: () => apiFetch<TransactionDetail>(`/api/transactions/${id}`),
+  });
+  useRefreshOnFocus(refetch);
 
   if (isLoading) {
     return (
-      <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
+      <View
+        style={[
+          styles.screen,
+          { paddingTop: 12, backgroundColor: theme.colors.background },
+        ]}
+      >
         <Stack.Screen options={{ headerShown: false }} />
-        <ActivityIndicator size="large" color={theme.colors.primary} />
+        <CardSkeleton />
+        <CardSkeleton />
       </View>
     );
   }
 
-  if (error || !transaction) {
+  // Keep showing the cached transaction if a background refetch fails; only
+  // fall back to the error view when there's no data to render.
+  if (!transaction) {
     return (
       <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
         <Stack.Screen options={{ headerShown: false }} />
         <ErrorView
           message={error?.message ?? "Transaction not found"}
-          onRetry={refresh}
+          onRetry={() => refetch()}
         />
       </View>
     );

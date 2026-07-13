@@ -1,13 +1,12 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 import {
   ScrollView,
   RefreshControl,
   View,
-  Text,
   StyleSheet,
-  ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { useQuery } from "@tanstack/react-query";
 import { NetWorthSummary } from "@/src/components/dashboard/NetWorthSummary";
 import { NetWorthCard } from "@/src/components/dashboard/NetWorthCard";
 import { SpendingComparison } from "@/src/components/dashboard/SpendingComparison";
@@ -18,51 +17,53 @@ import { GoalsNeedingAttentionCard } from "@/src/components/dashboard/GoalsNeedi
 import { apiFetch } from "@/src/lib/api-client";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { ErrorView } from "@/src/components/shared/ErrorView";
+import { useRefreshOnFocus } from "@/src/hooks/useRefreshOnFocus";
+import { Skeleton, CardSkeleton } from "@/src/components/shared/LoadingSkeleton";
 
 export default function DashboardScreen() {
   const { theme } = useTheme();
   const router = useRouter();
-  const [data, setData] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const fetchDashboard = useCallback(async () => {
-    try {
-      const result = await apiFetch<any>("/api/dashboard");
-      setData(result);
-      setError(null);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to load dashboard"
-      );
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchDashboard().finally(() => setIsLoading(false));
-  }, [fetchDashboard]);
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ["dashboard"],
+    queryFn: () => apiFetch<any>("/api/dashboard"),
+  });
+  useRefreshOnFocus(refetch);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await fetchDashboard();
+    await refetch();
     setRefreshing(false);
-  }, [fetchDashboard]);
+  }, [refetch]);
 
   if (isLoading) {
     return (
-      <View
-        style={[styles.center, { backgroundColor: theme.colors.background }]}
+      <ScrollView
+        style={[styles.container, { backgroundColor: theme.colors.surface }]}
       >
-        <ActivityIndicator size="large" color={theme.colors.primary} />
-      </View>
+        <View style={styles.skeletonWrap}>
+          {/* Net worth card */}
+          <CardSkeleton />
+          {/* Spending / budgets card */}
+          <CardSkeleton />
+          {/* List rows (bills / recent transactions) */}
+          <View style={styles.skeletonRows}>
+            <Skeleton width="100%" height={52} borderRadius={12} />
+            <Skeleton width="100%" height={52} borderRadius={12} />
+            <Skeleton width="100%" height={52} borderRadius={12} />
+          </View>
+        </View>
+      </ScrollView>
     );
   }
 
-  if (error) {
+  // Only blank the screen when there's nothing to show; a failed background
+  // refetch should not wipe out previously loaded data.
+  if (error && !data) {
     return (
       <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
-        <ErrorView message={error} onRetry={fetchDashboard} />
+        <ErrorView message={error.message} onRetry={() => refetch()} />
       </View>
     );
   }
@@ -101,4 +102,6 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
   bottomPadding: { height: 24 },
+  skeletonWrap: { paddingTop: 12 },
+  skeletonRows: { paddingHorizontal: 16, gap: 12 },
 });

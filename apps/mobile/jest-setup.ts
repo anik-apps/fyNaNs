@@ -47,6 +47,11 @@ jest.mock("expo-router", () => ({
   }),
   useSegments: () => [],
   useLocalSearchParams: () => ({}),
+  // Approximate screen focus with mount: run the focus callback as an effect.
+  useFocusEffect: (callback: () => void | (() => void)) => {
+    const React = require("react");
+    React.useEffect(callback, [callback]);
+  },
   Redirect: "Redirect",
   Link: "Link",
   Stack: {
