@@ -241,6 +241,16 @@ class TestTransactions:
         assert data["imported"] >= 3
         assert "skipped_duplicates" in data
 
+    def _import_csv(self, client, auth_headers, account_id, csv_content, name="dedup.csv"):
+        resp = client.post(
+            "/transactions/import",
+            headers=auth_headers,
+            params={"account_id": account_id},
+            files={"file": (name, csv_content, "text/csv")},
+        )
+        assert resp.status_code == 200, f"Import failed: {resp.text}"
+        return resp.json()
+
     def test_import_csv_deduplication(self, client: httpx.Client, auth_headers):
         """Importing the same CSV twice should skip duplicates."""
         account_id = self._get_or_create_account(client, auth_headers)
@@ -251,22 +261,142 @@ class TestTransactions:
         )
 
         # First import
+        data1 = self._import_csv(client, auth_headers, account_id, csv_content)
+        assert data1["imported"] >= 1
+
+        # Second import — should be deduplicated
+        data2 = self._import_csv(client, auth_headers, account_id, csv_content)
+        assert data2["skipped_duplicates"] >= 1
+
+        # Window boundary: same amount+description at exactly +3 days is a
+        # duplicate (window is inclusive), at +4 days it is not.
+        boundary_csv = (
+            "Date,Amount,Description\n"
+            "03/21/2026,99.99,Unique Dedup Test\n"  # +3 days -> duplicate
+            "03/22/2026,99.99,Unique Dedup Test\n"  # +4 days -> imported
+        )
+        data3 = self._import_csv(client, auth_headers, account_id, boundary_csv)
+        assert data3["imported"] == 1
+        assert data3["skipped_duplicates"] == 1
+        assert data3["errors"] == []
+
+    def test_import_csv_in_file_duplicates(self, client: httpx.Client, auth_headers):
+        """Duplicate rows within a single file are skipped too."""
+        account_id = self._get_or_create_account(client, auth_headers)
+
+        csv_content = (
+            "Date,Amount,Description\n"
+            "04/01/2026,12.34,InFile Dup Test\n"
+            "04/01/2026,12.34,InFile Dup Test\n"   # exact in-file duplicate
+            "04/02/2026,12.34,InFile Dup Test\n"   # within 3 days of row 1
+            "04/01/2026,56.78,InFile Dup Other\n"  # different amount+description
+        )
+        data = self._import_csv(client, auth_headers, account_id, csv_content)
+        assert data["imported"] == 2
+        assert data["skipped_duplicates"] == 2
+        assert data["errors"] == []
+
+    def test_import_csv_large_file(self, client: httpx.Client, auth_headers):
+        """A larger file imports every unique row in one batch."""
+        account_id = self._get_or_create_account(client, auth_headers)
+
+        rows = "".join(
+            f"05/{(i % 28) + 1:02d}/2026,{i + 1}.00,Bulk Import Row {i}\n"
+            for i in range(50)
+        )
+        csv_content = "Date,Amount,Description\n" + rows
+
+        data = self._import_csv(client, auth_headers, account_id, csv_content, name="bulk.csv")
+        assert data["imported"] == 50
+        assert data["skipped_duplicates"] == 0
+        assert data["errors"] == []
+
+    def test_import_ofx(self, client: httpx.Client, auth_headers):
+        """OFX import parses transactions and deduplicates on re-import."""
+        account_id = self._get_or_create_account(client, auth_headers)
+
+        ofx_content = (
+            "OFXHEADER:100\n"
+            "DATA:OFXSGML\n"
+            "VERSION:102\n"
+            "SECURITY:NONE\n"
+            "ENCODING:USASCII\n"
+            "CHARSET:1252\n"
+            "COMPRESSION:NONE\n"
+            "OLDFILEUID:NONE\n"
+            "NEWFILEUID:NONE\n"
+            "\n"
+            "<OFX>\n"
+            "<SIGNONMSGSRSV1>\n"
+            "<SONRS>\n"
+            "<STATUS>\n"
+            "<CODE>0\n"
+            "<SEVERITY>INFO\n"
+            "</STATUS>\n"
+            "<DTSERVER>20260615\n"
+            "<LANGUAGE>ENG\n"
+            "</SONRS>\n"
+            "</SIGNONMSGSRSV1>\n"
+            "<BANKMSGSRSV1>\n"
+            "<STMTTRNRS>\n"
+            "<TRNUID>0\n"
+            "<STATUS>\n"
+            "<CODE>0\n"
+            "<SEVERITY>INFO\n"
+            "</STATUS>\n"
+            "<STMTRS>\n"
+            "<CURDEF>USD\n"
+            "<BANKACCTFROM>\n"
+            "<BANKID>123456789\n"
+            "<ACCTID>1234567890\n"
+            "<ACCTTYPE>CHECKING\n"
+            "</BANKACCTFROM>\n"
+            "<BANKTRANLIST>\n"
+            "<DTSTART>20260601\n"
+            "<DTEND>20260615\n"
+            "<STMTTRN>\n"
+            "<TRNTYPE>DEBIT\n"
+            "<DTPOSTED>20260605\n"
+            "<TRNAMT>-42.50\n"
+            "<FITID>202606050001\n"
+            "<MEMO>OFX Grocery Store\n"
+            "</STMTTRN>\n"
+            "<STMTTRN>\n"
+            "<TRNTYPE>CREDIT\n"
+            "<DTPOSTED>20260610\n"
+            "<TRNAMT>1500.00\n"
+            "<FITID>202606100001\n"
+            "<MEMO>OFX Paycheck\n"
+            "</STMTTRN>\n"
+            "</BANKTRANLIST>\n"
+            "</STMTRS>\n"
+            "</STMTTRNRS>\n"
+            "</BANKMSGSRSV1>\n"
+            "</OFX>"
+        )
+
         resp1 = client.post(
             "/transactions/import",
             headers=auth_headers,
             params={"account_id": account_id},
-            files={"file": ("dedup.csv", csv_content, "text/csv")},
+            files={"file": ("import.ofx", ofx_content, "application/x-ofx")},
         )
-        assert resp1.json()["imported"] >= 1
+        assert resp1.status_code == 200, f"OFX import failed: {resp1.text}"
+        data1 = resp1.json()
+        assert data1["imported"] == 2
+        assert data1["errors"] == []
 
-        # Second import — should be deduplicated
+        # Re-import the same OFX file — everything is a duplicate
         resp2 = client.post(
             "/transactions/import",
             headers=auth_headers,
             params={"account_id": account_id},
-            files={"file": ("dedup.csv", csv_content, "text/csv")},
+            files={"file": ("import.ofx", ofx_content, "application/x-ofx")},
         )
-        assert resp2.json()["skipped_duplicates"] >= 1
+        assert resp2.status_code == 200
+        data2 = resp2.json()
+        assert data2["imported"] == 0
+        assert data2["skipped_duplicates"] == 2
 
 
 class TestCrossUserIsolation:
