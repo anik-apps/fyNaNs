@@ -23,7 +23,8 @@ from src.schemas.dashboard import (
     SpendingComparison,
     UpcomingBill,
 )
-from src.services.savings_goal import to_response as goal_to_response
+from src.services.budget import compute_spend_for_budgets
+from src.services.savings_goal import to_responses as goals_to_responses
 
 ASSET_TYPES = {"checking", "savings", "investment"}
 LIABILITY_TYPES = {"credit", "loan"}
@@ -155,18 +156,6 @@ async def _get_recent_transactions(
     ]
 
 
-def _get_period_start(period: str, today: date) -> date:
-    """Derive the start of the current budget period based on the budget's period type."""
-    if period == "weekly":
-        # Start of current ISO week (Monday)
-        return today - timedelta(days=today.weekday())
-    elif period == "yearly":
-        return today.replace(month=1, day=1)
-    else:
-        # monthly (default)
-        return today.replace(day=1)
-
-
 async def _get_top_budgets(
     db: AsyncSession, user_id: str, limit: int = 5, today: date | None = None
 ) -> list[BudgetStatus]:
@@ -174,12 +163,9 @@ async def _get_top_budgets(
 
     Each budget has its own period (weekly, monthly, yearly). The spending
     window is derived from the budget's period, not a fixed monthly window.
-
-    NOTE: This implementation issues one SUM query per budget (N+1 pattern).
-    Acceptable while users have a handful of budgets. If scale requires it,
-    refactor to a single query using GROUP BY category_id with conditional
-    date filtering (e.g., CASE/FILTER per period type) or a LATERAL JOIN
-    so the DB does all aggregation in one round-trip.
+    Spend for all budgets is batched via compute_spend_for_budgets (one
+    grouped SUM query per distinct period, max 3 queries total); ranking and
+    slicing happen in Python.
     """
     today = today or date.today()
 
@@ -191,22 +177,13 @@ async def _get_top_budgets(
     )
     rows = result.all()
 
+    spend_by_budget = await compute_spend_for_budgets(
+        db, user_id, [budget for budget, _, _, _ in rows], reference_date=today
+    )
+
     budgets = []
     for budget, cat_name, cat_color, cat_icon in rows:
-        # Compute period start based on this budget's period type
-        period_start = _get_period_start(budget.period, today)
-
-        # Sum transactions for this category within the period
-        spend_result = await db.execute(
-            select(func.coalesce(func.sum(Transaction.amount), 0)).where(
-                Transaction.user_id == user_id,
-                Transaction.category_id == budget.category_id,
-                Transaction.date >= period_start,
-                Transaction.date <= today,
-                Transaction.amount > 0,  # Only expenses (positive = money out)
-            )
-        )
-        amount_spent = Decimal(str(spend_result.scalar()))
+        amount_spent = spend_by_budget[budget.id]
 
         percent = (
             float(amount_spent / budget.amount_limit * 100) if budget.amount_limit > 0 else 0.0
@@ -323,8 +300,8 @@ async def _get_top_goals(
 ) -> tuple[list[GoalDashboardItem], int]:
     """Return top-N active goals by (behind-pace first, lowest progress first) + count.
 
-    NOTE: performs per-goal queries to compute progress + pace. Matches the
-    existing N+1 in _get_top_budgets; see ROADMAP tech-debt note for batching.
+    Progress + pace aggregates for all goals are batched via to_responses
+    (one grouped query per aggregate, max 3 queries total).
     """
     result = await db.execute(
         select(SavingsGoal)
@@ -338,9 +315,10 @@ async def _get_top_goals(
     goals = list(result.scalars().all())
     active_count = len(goals)
 
+    responses = await goals_to_responses(db, goals, today=today)
+
     scored: list[tuple[int, int, GoalDashboardItem]] = []
-    for g in goals:
-        r = await goal_to_response(db, g, today=today)
+    for r in responses:
         pace_rank = {
             "behind": 0, "target_passed": 0,
             "on_pace": 1, "ahead": 2, None: 3,

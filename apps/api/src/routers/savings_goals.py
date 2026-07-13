@@ -27,6 +27,7 @@ from src.services.savings_goal import (
     compute_current_amount,
     load_goal,
     to_response,
+    to_responses,
     validate_linked_account,
 )
 
@@ -57,7 +58,7 @@ async def list_goals(
         q = q.where(SavingsGoal.status == status.value)
     q = q.order_by(SavingsGoal.created_at.desc())
     goals = (await db.execute(q)).scalars().all()
-    return [await to_response(db, g) for g in goals]
+    return await to_responses(db, list(goals))
 
 
 @router.post("", response_model=GoalResponse, status_code=201)
