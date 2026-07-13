@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.services.plaid import (
     get_items_needing_sync,
     has_credit_accounts,
+    run_locked_sync,
     sync_liabilities,
     sync_transactions,
 )
@@ -22,14 +23,19 @@ async def execute_fallback_sync(db: AsyncSession) -> dict:
     results: dict = {"items_synced": 0, "errors": []}
 
     for item in items:
-        try:
+
+        async def sync_once(item=item):
             await sync_transactions(db, item)
 
             # Only call liabilities for items with credit accounts
             if await has_credit_accounts(db, item):
                 await sync_liabilities(db, item)
 
-            results["items_synced"] += 1
+        try:
+            # Serialize with webhook/manual syncs for the same item; if one
+            # is already running it picks this request up (coalesced pass).
+            if await run_locked_sync(item.id, sync_once):
+                results["items_synced"] += 1
         except Exception as e:
             results["errors"].append(
                 {

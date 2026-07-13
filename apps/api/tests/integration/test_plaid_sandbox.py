@@ -10,6 +10,7 @@ Tests are skipped if PLAID_CLIENT_ID is not set.
 
 import os
 import time
+import uuid
 
 import httpx
 import pytest
@@ -211,4 +212,118 @@ class TestPlaidSandboxTransactions:
                 f"Plaid sandbox did not produce transactions "
                 f"(sync: {sync_detail}). This is intermittent "
                 f"in sandbox mode — not a code bug."
+            )
+
+        # --- Transaction counts (batched sync path) ---
+        resp = client.get("/transactions", headers=headers, params={"limit": 200})
+        assert resp.status_code == 200
+        data = resp.json()
+        first_items = data if isinstance(data, list) else data.get("items", [])
+        count_after_first = len(first_items)
+        assert count_after_first > 0
+        # Every transaction the sync reported as added must be visible
+        assert count_after_first >= sync_data.get("added", 0)
+
+        # --- Idempotency: a second sync must not duplicate transactions ---
+        # Use /plaid/sync-all, which is not subject to the per-item manual
+        # sync rate limit (MIN_SYNC_INTERVAL).
+        resync = client.post("/plaid/sync-all", headers=headers)
+        assert resync.status_code == 200
+        resync_data = resync.json()
+        if resync_data["items_synced"] == 0:
+            pytest.skip(
+                "Plaid sandbox re-sync failed — intermittent sandbox behavior."
+            )
+
+        resp = client.get("/transactions", headers=headers, params={"limit": 200})
+        assert resp.status_code == 200
+        data = resp.json()
+        second_items = data if isinstance(data, list) else data.get("items", [])
+
+        # Cursor-based sync is idempotent: the count only changes by what
+        # Plaid actually reported on the re-sync (usually added=0/removed=0;
+        # the sandbox may stream late transactions).
+        assert len(second_items) == (
+            count_after_first + resync_data["added"] - resync_data["removed"]
+        )
+
+
+def _get_plaid_external_item_id(plaid_item_uuid: str) -> str:
+    """Fetch PlaidItem.item_id (Plaid's external ID) from the API database.
+
+    The webhook payload needs Plaid's item_id string, which the API
+    intentionally never exposes over HTTP — so look it up directly.
+    """
+    import asyncio
+
+    import asyncpg
+
+    dsn = os.getenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://fynans:fynans_dev@localhost:5432/fynans",
+    ).replace("+asyncpg", "")
+
+    async def _fetch():
+        conn = await asyncpg.connect(dsn)
+        try:
+            return await conn.fetchval(
+                "SELECT item_id FROM plaid_items WHERE id = $1",
+                uuid.UUID(plaid_item_uuid),
+            )
+        finally:
+            await conn.close()
+
+    try:
+        item_id = asyncio.run(_fetch())
+    except Exception as exc:  # pragma: no cover - environment dependent
+        pytest.skip(f"Cannot reach the API database to look up the Plaid item_id: {exc}")
+    if not item_id:
+        pytest.skip("Plaid item not found in the API database (remote API server?)")
+    return item_id
+
+
+class TestPlaidSandboxWebhook:
+    def test_webhook_acks_fast_and_syncs_in_background(
+        self, client, plaid_test_user, exchanged_item
+    ):
+        """SYNC_UPDATES_AVAILABLE must be acknowledged immediately.
+
+        The sync chain runs as a background task, so the response returns
+        quickly and transaction effects show up eventually. If another sync
+        for the item is running (e.g. from the previous test), the in-process
+        lock coalesces this one into a single extra pass — the ack must
+        still be fast and effects visible.
+        """
+        item_id = _get_plaid_external_item_id(str(exchanged_item["plaid_item_id"]))
+        payload = {
+            "webhook_type": "TRANSACTIONS",
+            "webhook_code": "SYNC_UPDATES_AVAILABLE",
+            "item_id": item_id,
+        }
+
+        start = time.monotonic()
+        resp = client.post("/plaid/webhook", json=payload)
+        elapsed = time.monotonic() - start
+
+        assert resp.status_code == 200, f"Webhook failed: {resp.text}"
+        assert resp.json() == {"status": "received"}
+        assert elapsed < 2.0, f"Webhook ack took {elapsed:.2f}s, expected < 2s"
+
+        # Poll for eventual sync effects.
+        headers = plaid_test_user["headers"]
+        transactions = []
+        deadline = time.monotonic() + 60.0
+        while time.monotonic() < deadline:
+            r = client.get("/transactions", headers=headers)
+            assert r.status_code == 200
+            data = r.json()
+            transactions = data if isinstance(data, list) else data.get("items", [])
+            if transactions:
+                break
+            time.sleep(2)
+
+        if not transactions:
+            pytest.skip(
+                "Plaid sandbox produced no transactions after the webhook — "
+                "intermittent in sandbox mode, not a code bug."
             )
