@@ -1,4 +1,5 @@
 import uuid
+from collections.abc import Sequence
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -68,6 +69,61 @@ async def compute_current_spend(
     return Decimal(str(result.scalar()))
 
 
+async def compute_spend_for_budgets(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    budgets: Sequence[Budget],
+    reference_date: date | None = None,
+) -> dict[uuid.UUID, Decimal]:
+    """Batch-compute current-period spend for many budgets.
+
+    Groups the budgets by their period (weekly/monthly/yearly) and runs ONE
+    grouped SUM query per distinct period — at most 3 queries regardless of
+    budget count. Matches compute_current_spend semantics exactly: only
+    positive amounts (expenses) are counted; negative amounts (income/refunds)
+    are excluded.
+
+    Args:
+        reference_date: Override for "today" when deriving period windows
+            (defaults to date.today()). Useful for testing.
+
+    Returns:
+        Mapping of budget id -> Decimal spend for that budget's current period.
+    """
+    spend_by_budget: dict[uuid.UUID, Decimal] = {b.id: Decimal("0") for b in budgets}
+
+    budgets_by_period: dict[str, list[Budget]] = {}
+    for budget in budgets:
+        budgets_by_period.setdefault(budget.period, []).append(budget)
+
+    for period, period_budgets in budgets_by_period.items():
+        period_start, period_end = _get_period_bounds(period, reference_date)
+
+        result = await db.execute(
+            select(Transaction.category_id, func.sum(Transaction.amount))
+            .where(
+                Transaction.user_id == user_id,
+                Transaction.category_id.in_(
+                    [b.category_id for b in period_budgets]
+                ),
+                Transaction.date >= period_start,
+                Transaction.date <= period_end,
+                Transaction.amount > 0,  # Only expenses
+            )
+            .group_by(Transaction.category_id)
+        )
+        spend_by_category = {
+            category_id: Decimal(str(total))
+            for category_id, total in result.all()
+        }
+        for budget in period_budgets:
+            spend_by_budget[budget.id] = spend_by_category.get(
+                budget.category_id, Decimal("0")
+            )
+
+    return spend_by_budget
+
+
 async def create_budget(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -100,7 +156,11 @@ async def create_budget(
 async def get_budgets_with_spend(
     db: AsyncSession, user_id: uuid.UUID
 ) -> list[dict]:
-    """Get all budgets with computed current spend."""
+    """Get all budgets with computed current spend.
+
+    Spend for all budgets is batched via compute_spend_for_budgets (one
+    grouped SUM query per distinct period, max 3 queries total).
+    """
     # Fetch budgets with category info in one query
     result = await db.execute(
         select(Budget, Category.name, Category.color)
@@ -109,12 +169,13 @@ async def get_budgets_with_spend(
     )
     rows = result.all()
 
+    spend_by_budget = await compute_spend_for_budgets(
+        db, user_id, [budget for budget, _, _ in rows]
+    )
+
     budget_data = []
     for budget, cat_name, cat_color in rows:
-        # compute_current_spend is still per-budget (each has different period/dates)
-        current_spend = await compute_current_spend(
-            db, user_id, budget.category_id, budget.period
-        )
+        current_spend = spend_by_budget[budget.id]
 
         budget_data.append(
             {

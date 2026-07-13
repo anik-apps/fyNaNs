@@ -1,12 +1,105 @@
 """Integration tests for budgets, bills, notifications, and device tokens."""
 
 import uuid
+from datetime import date, timedelta
+from decimal import Decimal
 
 import httpx
+import pytest
 
 
 def _unique(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
+
+
+def _seed_budget_spend_data(client: httpx.Client, headers) -> dict:
+    """Seed weekly + monthly + yearly budgets, each with its own category and
+    transactions exactly INSIDE and exactly OUTSIDE its period window, plus an
+    in-window negative refund that must be excluded from spend.
+
+    Returns {period: {"budget_id", "category_name", "amount_limit",
+    "expected_spend"}}.
+    """
+    today = date.today()
+    week_start = today - timedelta(days=today.weekday())  # Monday of ISO week
+    month_start = today.replace(day=1)
+    year_start = today.replace(month=1, day=1)
+
+    acct = client.post("/accounts", headers=headers, json={
+        "name": _unique("budget-window-acct"),
+        "type": "checking",
+        "balance": "1000.00",
+        "institution_name": "Budget Window Bank",
+    }).json()
+
+    plans = {
+        # period: (limit, in-window spend, [(date, amount), ...])
+        "weekly": {
+            "limit": "100.00",
+            "expected": Decimal("50.25"),
+            "txns": [
+                (week_start, "50.25"),                      # Monday: inside
+                (week_start - timedelta(days=1), "10.00"),  # Sunday before: outside
+            ],
+        },
+        "monthly": {
+            "limit": "125.00",
+            "expected": Decimal("100.10"),
+            "txns": [
+                (month_start, "100.10"),                     # 1st of month: inside
+                (month_start - timedelta(days=1), "20.00"),  # last day prev month: outside
+                (today, "-25.00"),                           # refund in-window: excluded
+            ],
+        },
+        "yearly": {
+            "limit": "800.00",
+            "expected": Decimal("200.05"),
+            "txns": [
+                (year_start, "200.05"),                     # Jan 1: inside
+                (year_start - timedelta(days=1), "30.00"),  # Dec 31 prev year: outside
+            ],
+        },
+    }
+
+    seeded = {}
+    for period, plan in plans.items():
+        cat = client.post("/categories", headers=headers, json={
+            "name": _unique(f"budget-window-{period}"),
+            "icon": "wallet",
+            "color": "#3366FF",
+        }).json()
+
+        budget_resp = client.post("/budgets", headers=headers, json={
+            "category_id": cat["id"],
+            "amount_limit": plan["limit"],
+            "period": period,
+        })
+        assert budget_resp.status_code == 201, budget_resp.text
+
+        for txn_date, amount in plan["txns"]:
+            txn_resp = client.post("/transactions", headers=headers, json={
+                "account_id": acct["id"],
+                "amount": amount,
+                "date": txn_date.isoformat(),
+                "description": f"{period} window txn {amount}",
+                "category_id": cat["id"],
+            })
+            assert txn_resp.status_code in (200, 201), txn_resp.text
+
+        seeded[period] = {
+            "budget_id": budget_resp.json()["id"],
+            "category_name": cat["name"],
+            "amount_limit": Decimal(plan["limit"]),
+            "expected_spend": plan["expected"],
+        }
+
+    return seeded
+
+
+@pytest.fixture(scope="module")
+def budget_spend_seed(client, auth_headers):
+    """Seed period-boundary budget data once for the spend assertions below."""
+    return _seed_budget_spend_data(client, auth_headers)
 
 
 class TestBudgets:
@@ -38,22 +131,45 @@ class TestBudgets:
         assert data["period"] == "monthly"
         assert "current_spend" in data
 
-    def test_list_budgets_with_spend(self, client: httpx.Client, auth_headers):
+    def test_list_budgets_with_spend(
+        self, client: httpx.Client, auth_headers, budget_spend_seed
+    ):
         resp = client.get("/budgets", headers=auth_headers)
         assert resp.status_code == 200
         budgets = resp.json()
         assert isinstance(budgets, list)
-        if budgets:
-            assert "current_spend" in budgets[0]
-            assert "amount_limit" in budgets[0]
+        assert "current_spend" in budgets[0]
+        assert "amount_limit" in budgets[0]
 
-    def test_budget_overview(self, client: httpx.Client, auth_headers):
+        by_id = {b["id"]: b for b in budgets}
+        # Exactly the in-window transaction counts; boundary-outside dates
+        # (Sunday before, last day of prev month, Dec 31 prev year) and the
+        # in-window negative refund must be excluded.
+        for period, seed in budget_spend_seed.items():
+            budget = by_id[seed["budget_id"]]
+            assert budget["period"] == period
+            assert Decimal(budget["current_spend"]) == seed["expected_spend"], (
+                f"{period} budget spend mismatch: {budget['current_spend']}"
+            )
+
+    def test_budget_overview(
+        self, client: httpx.Client, auth_headers, budget_spend_seed
+    ):
         resp = client.get("/budgets/overview", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
-        if data:
-            assert "percent_spent" in data[0]
+        assert "percent_spent" in data[0]
+
+        by_id = {b["id"]: b for b in data}
+        for period, seed in budget_spend_seed.items():
+            budget = by_id[seed["budget_id"]]
+            assert budget["period"] == period
+            assert Decimal(budget["current_spend"]) == seed["expected_spend"], (
+                f"{period} budget spend mismatch: {budget['current_spend']}"
+            )
+            expected_pct = float(seed["expected_spend"] / seed["amount_limit"] * 100)
+            assert budget["percent_spent"] == pytest.approx(expected_pct, abs=0.01)
 
     def test_update_budget(self, client: httpx.Client, auth_headers):
         cat_id = self._get_category_id(client, auth_headers)

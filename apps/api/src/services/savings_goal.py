@@ -1,6 +1,7 @@
 """Savings Goals service layer: progress, pace, required-monthly, validation."""
 
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_FLOOR, Decimal
 
@@ -124,44 +125,155 @@ async def compute_actual_monthly(
     )
 
 
+async def to_responses(
+    db: AsyncSession, goals: Sequence[SavingsGoal], today: date | None = None
+) -> list[GoalResponse]:
+    """Batch variant of to_response.
+
+    Computes all per-goal aggregates in one grouped query each (instead of
+    1-2 queries per goal):
+    - contribution totals by goal_id (current amount for unlinked goals;
+      mirrors compute_current_amount),
+    - rolling-30-day contribution sums by goal_id (pace for unlinked goals;
+      mirrors compute_actual_monthly),
+    - rolling-30-day inflow sums by account_id for linked goals (pace for
+      linked goals; mirrors compute_actual_monthly).
+
+    Responses are assembled in Python and match to_response exactly.
+    """
+    today = today or date.today()
+    if not goals:
+        return []
+
+    cutoff = today - timedelta(days=ROLLING_WINDOW_DAYS)
+    unlinked_ids = [g.id for g in goals if g.linked_account_id is None]
+    linked_account_ids = [
+        g.linked_account_id for g in goals if g.linked_account_id is not None
+    ]
+
+    contribution_totals: dict[uuid.UUID, Decimal] = {}
+    contribution_30d: dict[uuid.UUID, Decimal] = {}
+    if unlinked_ids:
+        r = await db.execute(
+            select(
+                SavingsGoalContribution.goal_id,
+                func.sum(SavingsGoalContribution.amount),
+            )
+            .where(SavingsGoalContribution.goal_id.in_(unlinked_ids))
+            .group_by(SavingsGoalContribution.goal_id)
+        )
+        contribution_totals = {
+            goal_id: Decimal(str(total)) for goal_id, total in r.all()
+        }
+
+        r = await db.execute(
+            select(
+                SavingsGoalContribution.goal_id,
+                func.sum(SavingsGoalContribution.amount),
+            )
+            .where(
+                SavingsGoalContribution.goal_id.in_(unlinked_ids),
+                SavingsGoalContribution.contribution_date >= cutoff,
+            )
+            .group_by(SavingsGoalContribution.goal_id)
+        )
+        contribution_30d = {
+            goal_id: Decimal(str(total)) for goal_id, total in r.all()
+        }
+
+    inflow_30d: dict[uuid.UUID, Decimal] = {}
+    if linked_account_ids:
+        r = await db.execute(
+            select(Transaction.account_id, func.sum(-Transaction.amount))
+            .where(
+                Transaction.account_id.in_(linked_account_ids),
+                Transaction.is_pending.is_(False),
+                Transaction.date >= cutoff,
+                Transaction.amount < 0,
+            )
+            .group_by(Transaction.account_id)
+        )
+        inflow_30d = {
+            account_id: Decimal(str(total)) for account_id, total in r.all()
+        }
+
+    # Balances for linked goals whose relationship wasn't eager-loaded
+    # (both list callers use selectinload, so this is normally empty).
+    missing_balance_ids = [
+        g.linked_account_id
+        for g in goals
+        if g.linked_account_id is not None and g.linked_account is None
+    ]
+    balances: dict[uuid.UUID, Decimal] = {}
+    if missing_balance_ids:
+        r = await db.execute(
+            select(Account.id, Account.balance).where(
+                Account.id.in_(missing_balance_ids)
+            )
+        )
+        balances = dict(r.all())
+
+    responses = []
+    for goal in goals:
+        if goal.linked_account_id is not None:
+            if goal.linked_account is not None:
+                balance = goal.linked_account.balance
+            else:
+                balance = balances.get(goal.linked_account_id) or Decimal("0")
+            current = max(Decimal("0"), balance)
+            actual_30d = inflow_30d.get(goal.linked_account_id, Decimal("0"))
+        else:
+            current = max(
+                Decimal("0"), contribution_totals.get(goal.id, Decimal("0"))
+            )
+            actual_30d = contribution_30d.get(goal.id, Decimal("0"))
+
+        actual = (
+            actual_30d * (ROLLING_MONTH_DAYS / ROLLING_WINDOW_DAYS)
+        ).quantize(Decimal("0.01"))
+        required = compute_required_monthly(
+            current, goal.target_amount, goal.target_date, today
+        )
+        pace = compute_pace_status(actual, required, goal.target_date, today)
+
+        pct = 0
+        if goal.target_amount > 0:
+            pct = int((current / goal.target_amount * 100).to_integral_value(
+                rounding=ROUND_FLOOR
+            ))
+        pct = min(100, max(0, pct))
+
+        linked = None
+        if goal.linked_account_id is not None and goal.linked_account is not None:
+            linked = LinkedAccountSummary(
+                id=goal.linked_account.id, name=goal.linked_account.name
+            )
+
+        responses.append(
+            GoalResponse(
+                id=goal.id,
+                name=goal.name,
+                target_amount=goal.target_amount,
+                target_date=goal.target_date,
+                linked_account=linked,
+                status=GoalStatus(goal.status),
+                current_amount=current,
+                progress_pct=pct,
+                required_monthly=required,
+                pace_status=pace,
+                completed_at=goal.completed_at,
+                celebrated_at=goal.celebrated_at,
+            )
+        )
+
+    return responses
+
+
 async def to_response(
     db: AsyncSession, goal: SavingsGoal, today: date | None = None
 ) -> GoalResponse:
-    today = today or date.today()
-    current = await compute_current_amount(db, goal)
-    required = compute_required_monthly(
-        current, goal.target_amount, goal.target_date, today
-    )
-    actual = await compute_actual_monthly(db, goal, today)
-    pace = compute_pace_status(actual, required, goal.target_date, today)
-
-    pct = 0
-    if goal.target_amount > 0:
-        pct = int((current / goal.target_amount * 100).to_integral_value(
-            rounding=ROUND_FLOOR
-        ))
-    pct = min(100, max(0, pct))
-
-    linked = None
-    if goal.linked_account_id is not None and goal.linked_account is not None:
-        linked = LinkedAccountSummary(
-            id=goal.linked_account.id, name=goal.linked_account.name
-        )
-
-    return GoalResponse(
-        id=goal.id,
-        name=goal.name,
-        target_amount=goal.target_amount,
-        target_date=goal.target_date,
-        linked_account=linked,
-        status=GoalStatus(goal.status),
-        current_amount=current,
-        progress_pct=pct,
-        required_monthly=required,
-        pace_status=pace,
-        completed_at=goal.completed_at,
-        celebrated_at=goal.celebrated_at,
-    )
+    """Single-goal convenience wrapper around to_responses."""
+    return (await to_responses(db, [goal], today))[0]
 
 
 async def validate_linked_account(
