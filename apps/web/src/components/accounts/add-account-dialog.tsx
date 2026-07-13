@@ -36,10 +36,18 @@ type AccountFormData = z.infer<typeof accountSchema>;
 
 interface AddAccountDialogProps {
   onAccountAdded?: () => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function AddAccountDialog({ onAccountAdded }: AddAccountDialogProps) {
-  const [open, setOpen] = useState(false);
+export function AddAccountDialog({
+  onAccountAdded,
+  open: controlledOpen,
+  onOpenChange,
+}: AddAccountDialogProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
   const [error, setError] = useState<string | null>(null);
 
   const {

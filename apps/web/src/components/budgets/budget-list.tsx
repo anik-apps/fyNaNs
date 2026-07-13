@@ -6,11 +6,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api-client";
 import { PieChart } from "lucide-react";
-import Link from "next/link";
-import { ROUTES } from "@/lib/constants";
 import type { Budget } from "./types";
 
-export function BudgetList() {
+interface BudgetListProps {
+  onCreate?: () => void;
+}
+
+export function BudgetList({ onCreate }: BudgetListProps) {
   const { data: budgets, isPending, isError, error, refetch } = useQuery({
     queryKey: ["budgets"],
     queryFn: () => apiFetch<Budget[]>("/api/budgets"),
@@ -47,8 +49,8 @@ export function BudgetList() {
         <p className="text-sm mt-1">
           Create a budget to start tracking your spending by category.
         </p>
-        <Button asChild variant="outline" className="mt-4">
-          <Link href={ROUTES.BUDGETS}>Create a budget</Link>
+        <Button variant="outline" className="mt-4" onClick={onCreate}>
+          Create a budget
         </Button>
       </div>
     );

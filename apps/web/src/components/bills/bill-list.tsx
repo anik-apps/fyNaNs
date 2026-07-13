@@ -6,11 +6,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api-client";
 import { Receipt } from "lucide-react";
-import Link from "next/link";
-import { ROUTES } from "@/lib/constants";
 import type { Bill } from "./types";
 
-export function BillList() {
+interface BillListProps {
+  onCreate?: () => void;
+}
+
+export function BillList({ onCreate }: BillListProps) {
   const { data: bills, isPending, isError, error, refetch } = useQuery({
     queryKey: ["bills"],
     queryFn: () => apiFetch<Bill[]>("/api/bills"),
@@ -47,8 +49,8 @@ export function BillList() {
         <p className="text-sm mt-1">
           Add your recurring bills to stay on top of payments.
         </p>
-        <Button asChild variant="outline" className="mt-4">
-          <Link href={ROUTES.BILLS}>Add a bill</Link>
+        <Button variant="outline" className="mt-4" onClick={onCreate}>
+          Add a bill
         </Button>
       </div>
     );
