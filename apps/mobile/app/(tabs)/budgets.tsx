@@ -47,10 +47,13 @@ export default function BudgetsScreen() {
         method: "POST",
         body: JSON.stringify(budgetData),
       }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["budgets"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-    },
+    // Return the promise so mutateAsync (and the form's pending state)
+    // resolves only after the lists have refreshed.
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["budgets"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      ]),
   });
 
   if (isLoading) {

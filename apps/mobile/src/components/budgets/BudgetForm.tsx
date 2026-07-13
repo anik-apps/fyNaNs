@@ -31,6 +31,9 @@ export function BudgetForm({ visible, onClose, onSubmit }: BudgetFormProps) {
   const [submitting, setSubmitting] = useState(false);
 
   function handleClose() {
+    // Android back / iOS swipe-dismiss can fire while a submit is in flight;
+    // closing then would leave a stale error on the next open.
+    if (submitting) return;
     setError(null);
     onClose();
   }
