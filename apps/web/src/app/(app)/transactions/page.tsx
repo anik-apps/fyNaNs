@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { TransactionFilters } from "@/components/transactions/transaction-filters";
 import { TransactionList } from "@/components/transactions/transaction-list";
 import { ImportDialog } from "@/components/transactions/import-dialog";
@@ -30,13 +31,13 @@ function getDateFromRange(range: string): string | undefined {
 }
 
 export default function TransactionsPage() {
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
   const [accountId, setAccountId] = useState("all");
   const [timeRange, setTimeRange] = useState("30d");
   const [categories, setCategories] = useState<Category[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [refreshKey, setRefreshKey] = useState(0);
   const [filterError, setFilterError] = useState<string | null>(null);
   const debouncedSearch = useDebounce(search, 300);
 
@@ -65,7 +66,11 @@ export default function TransactionsPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Transactions</h1>
-        <ImportDialog onImported={() => setRefreshKey((k) => k + 1)} />
+        <ImportDialog
+          onImported={() =>
+            queryClient.invalidateQueries({ queryKey: ["transactions"] })
+          }
+        />
       </div>
       {filterError && (
         <div className="p-4 text-sm text-destructive bg-destructive/10 rounded-md">
@@ -85,7 +90,6 @@ export default function TransactionsPage() {
         accounts={accounts}
       />
       <TransactionList
-        key={`${refreshKey}-${timeRange}`}
         search={debouncedSearch}
         category={category}
         accountId={accountId}

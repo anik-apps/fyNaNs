@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency, formatRelativeDate, cn } from "@/lib/utils";
 import {
@@ -74,7 +75,9 @@ function getDisplayType(
   return amount < 0 ? "income" : "expense";
 }
 
-export function TransactionRow({
+// Memoized: props are primitives, so already-rendered rows skip re-rendering
+// when "Load more" appends a new page to the list.
+export const TransactionRow = memo(function TransactionRow({
   date,
   description,
   merchant_name,
@@ -160,4 +163,4 @@ export function TransactionRow({
       </div>
     </div>
   );
-}
+});
