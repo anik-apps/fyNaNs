@@ -43,10 +43,13 @@ export default function BillsScreen() {
         method: "POST",
         body: JSON.stringify(billData),
       }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["bills"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-    },
+    // Return the promise so mutateAsync (and the form's pending state)
+    // resolves only after the lists have refreshed.
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["bills"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      ]),
   });
 
   const filteredBills =

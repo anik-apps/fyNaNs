@@ -1,4 +1,5 @@
 import React from "react";
+import { Modal } from "react-native";
 import { render, fireEvent, waitFor } from "@testing-library/react-native";
 import { BillForm } from "@/src/components/bills/BillForm";
 import { ThemeProvider } from "@/src/providers/ThemeProvider";
@@ -43,6 +44,28 @@ describe("BillForm", () => {
     fireEvent.press(utils.getByText("Save"));
 
     expect(await utils.findByText("Saving…")).toBeTruthy();
+    expect(onClose).not.toHaveBeenCalled();
+
+    resolveSubmit!();
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  it("ignores back/swipe dismissal while a submit is in flight", async () => {
+    let resolveSubmit: () => void;
+    const onSubmit = jest.fn(
+      () => new Promise<void>((resolve) => (resolveSubmit = resolve))
+    );
+    const onClose = jest.fn();
+    const utils = renderWithTheme(
+      <BillForm visible onClose={onClose} onSubmit={onSubmit} />
+    );
+
+    fillForm(utils);
+    fireEvent.press(utils.getByText("Save"));
+    expect(await utils.findByText("Saving…")).toBeTruthy();
+
+    // Android back button / iOS swipe-dismiss fire the Modal's onRequestClose
+    fireEvent(utils.UNSAFE_getByType(Modal as any), "requestClose");
     expect(onClose).not.toHaveBeenCalled();
 
     resolveSubmit!();
