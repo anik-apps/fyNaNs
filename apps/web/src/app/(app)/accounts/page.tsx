@@ -13,6 +13,7 @@ export default function AccountsPage() {
   const queryClient = useQueryClient();
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   const handleAccountsChanged = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["accounts"] });
@@ -63,7 +64,11 @@ export default function AccountsPage() {
             {isSyncing ? "Syncing..." : "Sync All"}
           </Button>
           <PlaidLinkButton onSuccess={handleAccountsChanged} />
-          <AddAccountDialog onAccountAdded={handleAccountsChanged} />
+          <AddAccountDialog
+            onAccountAdded={handleAccountsChanged}
+            open={addOpen}
+            onOpenChange={setAddOpen}
+          />
         </div>
       </div>
       {syncResult && (
@@ -71,7 +76,7 @@ export default function AccountsPage() {
           {syncResult}
         </p>
       )}
-      <AccountList />
+      <AccountList onCreate={() => setAddOpen(true)} />
     </div>
   );
 }

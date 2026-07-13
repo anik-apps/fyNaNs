@@ -92,6 +92,17 @@ describe("BillList", () => {
 
     expect(await screen.findByText(/no bills yet/i)).toBeInTheDocument();
   });
+
+  it("empty-state CTA opens the create flow via onCreate", async () => {
+    mockApiFetch.mockResolvedValue([]);
+    const onCreate = vi.fn();
+    render(<BillList onCreate={onCreate} />, { wrapper: createWrapper() });
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /add a bill/i })
+    );
+    expect(onCreate).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("BudgetList", () => {
@@ -109,6 +120,17 @@ describe("BudgetList", () => {
     render(<BudgetList />, { wrapper: createWrapper() });
 
     expect(await screen.findByText(/no budgets yet/i)).toBeInTheDocument();
+  });
+
+  it("empty-state CTA opens the create flow via onCreate", async () => {
+    mockApiFetch.mockResolvedValue([]);
+    const onCreate = vi.fn();
+    render(<BudgetList onCreate={onCreate} />, { wrapper: createWrapper() });
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /create a budget/i })
+    );
+    expect(onCreate).toHaveBeenCalledTimes(1);
   });
 });
 
