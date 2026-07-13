@@ -3,7 +3,7 @@
 import Link from "next/link";
 import type { PaceStatus } from "@fynans/shared-types";
 import type { SavingsGoal } from "./types";
-import { money } from "./types";
+import { formatCurrency } from "@/lib/utils";
 
 const PACE_CLASS: Record<PaceStatus, string> = {
   ahead: "bg-green-100 text-green-800 border-green-200 dark:bg-green-950/40 dark:text-green-300 dark:border-green-900",
@@ -51,7 +51,7 @@ export function GoalCard({ goal }: { goal: SavingsGoal }) {
         </div>
         <div className="text-right">
           <div className="font-semibold">
-            ${money(goal.current_amount)} / ${money(goal.target_amount)}
+            {formatCurrency(goal.current_amount)} / {formatCurrency(goal.target_amount)}
           </div>
           <div className="text-xs text-muted-foreground">{goal.progress_pct}%</div>
         </div>

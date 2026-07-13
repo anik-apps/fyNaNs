@@ -41,13 +41,20 @@ export default function SettingsPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [exportSuccess, setExportSuccess] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   async function handleExport() {
     setIsExporting(true);
+    setExportSuccess(false);
+    setExportError(null);
     try {
       await apiFetch("/api/user/export", { method: "POST" });
-    } catch {
-      // handled
+      setExportSuccess(true);
+    } catch (err) {
+      setExportError(
+        err instanceof Error ? err.message : "Export failed. Please try again."
+      );
     } finally {
       setIsExporting(false);
     }
@@ -88,6 +95,16 @@ export default function SettingsPage() {
       </div>
 
       <div className="space-y-3 pt-4 border-t">
+        {exportSuccess && (
+          <div className="p-3 text-sm text-green-700 bg-green-50 dark:bg-green-900/20 dark:text-green-400 rounded-md">
+            Export started — we&apos;ll email you the file.
+          </div>
+        )}
+        {exportError && (
+          <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md">
+            {exportError}
+          </div>
+        )}
         <Button
           variant="outline"
           className="w-full sm:w-auto"
@@ -95,7 +112,7 @@ export default function SettingsPage() {
           disabled={isExporting}
         >
           <Download className="h-4 w-4 mr-2" />
-          {isExporting ? "Exporting..." : "Export Data"}
+          {isExporting ? "Exporting…" : "Export Data"}
         </Button>
 
         <div>

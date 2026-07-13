@@ -2,6 +2,7 @@
 
 import { Bell, LogOut, Moon, Sun, User, Monitor } from "lucide-react";
 import { useTheme } from "next-themes";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -12,12 +13,21 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/hooks/use-auth";
+import { apiFetch } from "@/lib/api-client";
 import { ROUTES } from "@/lib/constants";
 import Link from "next/link";
 
 export function Header() {
   const { user, logout } = useAuth();
   const { setTheme, theme } = useTheme();
+
+  const { data: unreadData } = useQuery({
+    queryKey: ["notifications-unread"],
+    queryFn: () =>
+      apiFetch<{ unread_count: number }>("/api/notifications?limit=1"),
+    staleTime: 60_000,
+  });
+  const unreadCount = unreadData?.unread_count ?? 0;
 
   const initials = user?.name
     ? user.name
@@ -56,8 +66,20 @@ export function Header() {
 
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" asChild>
-            <Link href="/notifications">
+            <Link
+              href="/notifications"
+              aria-label="Notifications"
+              className="relative"
+            >
               <Bell className="h-5 w-5" />
+              {unreadCount > 0 && (
+                <span
+                  data-testid="unread-badge"
+                  className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold leading-none text-destructive-foreground"
+                >
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
+              )}
             </Link>
           </Button>
 
@@ -66,6 +88,7 @@ export function Header() {
               <Button
                 variant="ghost"
                 className="relative h-8 w-8 rounded-full"
+                aria-label="Account menu"
               >
                 <Avatar className="h-8 w-8">
                   <AvatarFallback className="text-xs">

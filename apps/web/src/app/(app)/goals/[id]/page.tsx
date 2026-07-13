@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { GoalForm } from "@/components/goals/goal-form";
 import { ReopenDialog } from "@/components/goals/reopen-dialog";
 import { ContributionsPanel } from "@/components/goals/contributions-panel";
-import { money, type SavingsGoalDetail } from "@/components/goals/types";
+import { type SavingsGoalDetail } from "@/components/goals/types";
+import { formatCurrency } from "@/lib/utils";
 
 export default function GoalDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -68,8 +69,8 @@ export default function GoalDetailPage({ params }: { params: Promise<{ id: strin
         </div>
 
         <div className="mt-3 text-3xl font-semibold">
-          ${money(goal.current_amount)}
-          <span className="ml-2 text-base font-normal text-muted-foreground">of ${money(goal.target_amount)}</span>
+          {formatCurrency(goal.current_amount)}
+          <span className="ml-2 text-base font-normal text-muted-foreground">of {formatCurrency(goal.target_amount)}</span>
         </div>
 
         <div className="mt-3 h-3 overflow-hidden rounded-full bg-muted">
