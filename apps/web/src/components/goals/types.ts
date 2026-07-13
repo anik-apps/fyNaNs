@@ -32,7 +32,3 @@ export interface SavingsGoalDetail extends SavingsGoal {
   contributions: Contribution[];
   notes: string | null;
 }
-
-export function money(v: string | number): string {
-  return Number(v).toFixed(2);
-}
