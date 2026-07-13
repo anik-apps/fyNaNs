@@ -26,8 +26,26 @@
 - [x] Mobile app EAS production build and distribution (Android)
 - [x] Visual regression testing with Playwright snapshots (36 baselines)
 - [x] Replace placeholder app icons with brand assets
+- [x] Performance & UX optimization sweep (12 PRs): Plaid sync batching + async webhook,
+      budget/goal/history query aggregation, event-loop unblocking, import batching,
+      TanStack Query on web + mobile, error/empty/pending states, bills/budgets edit-delete,
+      biometric lock hardening, safe-area fixes
 - [ ] Screenshot-based UX review across web pages (human pass)
 - [ ] iOS build and testing (deferred — requires Mac + Apple Developer account)
+
+### Deferred optimization backlog (low-severity, from the 2026-07 review)
+
+- [ ] `accounts.user_id` index (trivial migration; table currently tiny)
+- [ ] Budget-alerts job N+1 (reuse `compute_spend_for_budgets`)
+- [ ] Metrics middleware: use `scope["route"]` instead of scanning `app.routes`
+- [ ] `Cache-Control` header on `/categories` (mostly moot with client-side caching)
+- [ ] Shared httpx client + batched Expo push sends in notifications
+- [ ] Fallback-sync SQL staleness filter + per-item session scoping
+- [ ] Web transaction-list virtualization (memoization already done)
+- [ ] Session-revoke confirm + aria-label; notification-settings save error state
+- [ ] Goal archive pending state; goals list skeletons
+- [ ] Mobile list-row memoization (transactions, account detail)
+- [ ] Mobile native date picker (`@react-native-community/datetimepicker`)
 
 ## Phase 2 — Extended Features (Current)
 
@@ -58,12 +76,12 @@
 - [ ] Plaid OAuth redirect handling for production (required for major US banks)
 - [ ] Sphinx API documentation setup
 - [ ] Upgrade GitHub Actions from Node.js 20 to Node.js 24
-- [ ] Fix N+1 in dashboard _get_top_budgets (spend query per budget)
-- [ ] Fix N+1 in spending_history (_compute_period_totals called per month)
-- [ ] Add React.memo to list item components (web: transaction-row, bill-card, account-card, budget-progress)
+- [x] Fix N+1 in dashboard _get_top_budgets (spend query per budget)
+- [x] Fix N+1 in spending_history (_compute_period_totals called per month)
+- [ ] Add React.memo to list item components (web: bill-card, account-card, budget-progress — transaction-row done)
 - [ ] Add React.memo to chart components (mobile: CategoryDonutChart, NetWorthChart, SpendingBarChart)
 - [ ] Create useChartSelection hook to consolidate 3 duplicate timeout patterns (mobile)
-- [ ] Fix useApi hook dependency array gap (mobile)
+- [x] Fix useApi hook dependency array gap (mobile — hook removed; screens migrated to TanStack Query)
 - [ ] Add category_id ownership validation in create_transaction (API)
 - [ ] Increase test coverage: mobile components (25+ untested), web components (45+ untested), API email service
 - [ ] Consolidate Account interface — use shared-types instead of local definitions in web/mobile
