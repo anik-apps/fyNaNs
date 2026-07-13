@@ -44,10 +44,10 @@ const bill = {
   name: "Netflix",
   amount: "15.99",
   frequency: "monthly",
+  day_of_month: null,
   next_due_date: "2026-07-20",
+  reminder_days: 3,
   is_auto_pay: false,
-  days_until_due: 7,
-  category_name: null,
 };
 
 function txn(id: string, description: string) {

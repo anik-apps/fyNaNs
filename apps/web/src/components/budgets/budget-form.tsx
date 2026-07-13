@@ -118,7 +118,14 @@ export function BudgetForm({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        // Block Escape/overlay-close while a save is in flight — a remount
+        // would allow a concurrent second submit (mirrors the delete guard).
+        if (!mutation.isPending) setOpen(nextOpen);
+      }}
+    >
       {!editing && (
         <DialogTrigger asChild>
           <Button size="sm">
@@ -142,7 +149,7 @@ export function BudgetForm({
             {editing ? (
               <Input
                 id="budget-category"
-                value={editing.category_name}
+                value={editing.category_name ?? ""}
                 disabled
               />
             ) : (

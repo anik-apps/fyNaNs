@@ -15,8 +15,8 @@ interface BudgetProgressProps {
 }
 
 export function BudgetProgress({ budget }: BudgetProgressProps) {
-  const { category_name, amount_limit, amount_spent, percent_spent, period } =
-    budget;
+  const { category_name, amount_limit, current_spend, period } = budget;
+  const categoryName = category_name ?? "Uncategorized";
 
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -32,22 +32,26 @@ export function BudgetProgress({ budget }: BudgetProgressProps) {
     },
   });
 
-  const remaining = parseFloat(amount_limit) - parseFloat(amount_spent);
-  const isOverBudget = percent_spent > 100;
+  // GET /api/budgets returns current_spend (not percent_spent) — derive it.
+  const limit = parseFloat(amount_limit);
+  const spent = parseFloat(current_spend);
+  const percentSpent = limit > 0 ? (spent / limit) * 100 : 0;
+  const remaining = limit - spent;
+  const isOverBudget = percentSpent > 100;
 
   return (
     <Card>
       <CardContent className="pt-6 space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="font-medium">{category_name}</h3>
+          <h3 className="font-medium">{categoryName}</h3>
           <div className="flex items-center gap-1">
             <span className="text-xs text-muted-foreground capitalize">
               {period}
             </span>
             <CardActionsMenu
-              label={`Actions for ${category_name} budget`}
+              label={`Actions for ${categoryName} budget`}
               onEdit={() => setEditOpen(true)}
-              deleteTitle={`Delete budget for "${category_name}"?`}
+              deleteTitle={`Delete budget for "${categoryName}"?`}
               deleteDescription="This removes the budget permanently."
               deleteOpen={deleteOpen}
               onDeleteOpenChange={(open) => {
@@ -68,12 +72,12 @@ export function BudgetProgress({ budget }: BudgetProgressProps) {
         </div>
 
         <Progress
-          value={Math.min(percent_spent, 100)}
+          value={Math.min(percentSpent, 100)}
           className={cn(
             "h-3",
             isOverBudget
               ? "[&>div]:bg-red-500"
-              : percent_spent >= 80
+              : percentSpent >= 80
                 ? "[&>div]:bg-yellow-500"
                 : "[&>div]:bg-green-500"
           )}
@@ -81,7 +85,7 @@ export function BudgetProgress({ budget }: BudgetProgressProps) {
 
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">
-            {formatCurrency(amount_spent)} / {formatCurrency(amount_limit)}
+            {formatCurrency(current_spend)} / {formatCurrency(amount_limit)}
           </span>
           <span
             className={cn(
@@ -96,7 +100,7 @@ export function BudgetProgress({ budget }: BudgetProgressProps) {
         </div>
 
         <div className="text-xs text-muted-foreground text-right">
-          {Math.round(percent_spent)}% used
+          {Math.round(percentSpent)}% used
         </div>
       </CardContent>
       {editOpen && (

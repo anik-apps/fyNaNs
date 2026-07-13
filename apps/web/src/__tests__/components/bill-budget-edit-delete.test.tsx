@@ -34,20 +34,15 @@ const bill: Bill = {
   next_due_date: "2026-07-20",
   reminder_days: 3,
   is_auto_pay: false,
-  days_until_due: 7,
-  category_name: null,
 };
 
 const budget: Budget = {
   id: "bud1",
   category_id: "cat1",
   category_name: "Groceries",
-  category_color: "#4A90D9",
-  category_icon: "cart",
   amount_limit: "500.00",
-  amount_spent: "120.00",
-  percent_spent: 24,
   period: "monthly",
+  current_spend: "120.00",
 };
 
 beforeEach(() => {
@@ -70,6 +65,7 @@ describe("BillCard actions", () => {
     expect(await screen.findByText("Edit bill")).toBeInTheDocument();
     expect(screen.getByLabelText("Bill Name")).toHaveValue("Netflix");
     expect(screen.getByLabelText("Amount")).toHaveValue(15.99);
+    expect(screen.getByLabelText("Next due date")).toHaveValue("2026-07-20");
     expect(screen.getByLabelText("Day of Month")).toHaveValue(15);
     expect(screen.getByLabelText("Reminder (days before)")).toHaveValue(3);
   });
@@ -95,6 +91,7 @@ describe("BillCard actions", () => {
     expect(JSON.parse((options as RequestInit).body as string)).toMatchObject({
       name: "Netflix Premium",
       amount: "15.99",
+      next_due_date: "2026-07-20",
       day_of_month: 15,
     });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["bills"] });
@@ -102,6 +99,23 @@ describe("BillCard actions", () => {
     await waitFor(() =>
       expect(screen.queryByText("Edit bill")).not.toBeInTheDocument()
     );
+  });
+
+  it("sends explicit null when an optional field is cleared on edit", async () => {
+    mockApiFetch.mockResolvedValue(bill);
+    renderWithClient(<BillCard bill={bill} />);
+
+    const user = await openMenuAndSelect(/actions for netflix/i, /edit/i);
+
+    await user.clear(await screen.findByLabelText("Day of Month"));
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(mockApiFetch).toHaveBeenCalled());
+    const [, options] = mockApiFetch.mock.calls[0];
+    const body = JSON.parse((options as RequestInit).body as string);
+    // null survives JSON.stringify (undefined would be silently dropped and
+    // the backend's exclude_unset update would keep the old value).
+    expect(body.day_of_month).toBeNull();
   });
 
   it("confirms deletion, fires DELETE and invalidates bills and dashboard", async () => {

@@ -31,6 +31,7 @@ const billSchema = z.object({
   name: z.string().min(1, "Name is required"),
   amount: z.string().min(1, "Amount is required"),
   frequency: z.string().min(1, "Frequency is required"),
+  next_due_date: z.string().min(1, "Next due date is required"),
   day_of_month: z.string().optional(),
   is_auto_pay: z.boolean().default(false),
   reminder_days: z.string().optional(),
@@ -72,6 +73,7 @@ export function BillForm({
       name: editing?.name ?? "",
       amount: editing?.amount ?? "",
       frequency: editing?.frequency ?? "",
+      next_due_date: editing?.next_due_date?.slice(0, 10) ?? "",
       day_of_month:
         editing?.day_of_month != null ? String(editing.day_of_month) : "",
       reminder_days:
@@ -85,12 +87,21 @@ export function BillForm({
       const body = JSON.stringify({
         ...data,
         is_auto_pay: isAutoPay,
+        // In edit mode a cleared optional must be an explicit null:
+        // undefined is dropped by JSON.stringify and the backend's
+        // exclude_unset update would silently keep the old value.
         day_of_month: data.day_of_month
           ? parseInt(data.day_of_month)
-          : undefined,
+          : editing
+            ? null
+            : undefined,
+        // reminder_days is NOT NULL (default 3) on the backend, so clearing
+        // it resets to the default rather than sending null.
         reminder_days: data.reminder_days
           ? parseInt(data.reminder_days)
-          : undefined,
+          : editing
+            ? 3
+            : undefined,
       });
       return editing
         ? apiFetch(`/api/bills/${editing.id}`, { method: "PUT", body })
@@ -117,7 +128,14 @@ export function BillForm({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        // Block Escape/overlay-close while a save is in flight — a remount
+        // would allow a concurrent second submit (mirrors the delete guard).
+        if (!mutation.isPending) setOpen(nextOpen);
+      }}
+    >
       {!editing && (
         <DialogTrigger asChild>
           <Button size="sm">
@@ -174,16 +192,28 @@ export function BillForm({
                 <SelectValue placeholder="Select frequency" />
               </SelectTrigger>
               <SelectContent>
+                {/* Only frequencies the backend accepts: weekly|monthly|yearly */}
                 <SelectItem value="monthly">Monthly</SelectItem>
                 <SelectItem value="weekly">Weekly</SelectItem>
-                <SelectItem value="biweekly">Biweekly</SelectItem>
-                <SelectItem value="quarterly">Quarterly</SelectItem>
                 <SelectItem value="yearly">Yearly</SelectItem>
               </SelectContent>
             </Select>
             {errors.frequency && (
               <p className="text-sm text-destructive">
                 {errors.frequency.message}
+              </p>
+            )}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="next_due_date">Next due date</Label>
+            <Input
+              id="next_due_date"
+              type="date"
+              {...register("next_due_date")}
+            />
+            {errors.next_due_date && (
+              <p className="text-sm text-destructive">
+                {errors.next_due_date.message}
               </p>
             )}
           </div>

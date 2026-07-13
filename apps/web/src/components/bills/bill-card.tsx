@@ -14,16 +14,19 @@ interface BillCardProps {
   bill: Bill;
 }
 
+// GET /api/bills doesn't return days_until_due — derive it from
+// next_due_date (a YYYY-MM-DD date string), comparing calendar days.
+function getDaysUntilDue(nextDueDate: string): number {
+  const [year, month, day] = nextDueDate.slice(0, 10).split("-").map(Number);
+  const due = new Date(year, month - 1, day);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((due.getTime() - today.getTime()) / 86_400_000);
+}
+
 export function BillCard({ bill }: BillCardProps) {
-  const {
-    name,
-    amount,
-    frequency,
-    next_due_date,
-    is_auto_pay,
-    days_until_due,
-    category_name,
-  } = bill;
+  const { name, amount, frequency, next_due_date, is_auto_pay } = bill;
+  const days_until_due = getDaysUntilDue(next_due_date);
 
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -62,7 +65,6 @@ export function BillCard({ bill }: BillCardProps) {
             <p className="text-2xl font-bold">{formatCurrency(amount)}</p>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span className="capitalize">{frequency}</span>
-              {category_name && <span>| {category_name}</span>}
             </div>
           </div>
           <div className="flex items-start gap-1">
