@@ -2,15 +2,16 @@
 
 import { useState, useCallback, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import dynamic from "next/dynamic";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency, formatRelativeDate, cn } from "@/lib/utils";
-import { apiFetch } from "@/lib/api-client";
+import { apiFetch, ApiError } from "@/lib/api-client";
 import { TransactionRow } from "@/components/transactions/transaction-row";
 import { ChartModal } from "@/components/dashboard/chart-modal";
 import {
@@ -70,6 +71,7 @@ function getDateFrom(range: string): string | undefined {
 export default function AccountDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const accountId = params.id as string;
   const [isDeleting, setIsDeleting] = useState(false);
   const [chartModalOpen, setChartModalOpen] = useState(false);
@@ -134,17 +136,30 @@ export default function AccountDetailPage() {
     return Object.values(map).filter((c) => c.total > 0).sort((a, b) => b.total - a.total);
   }, [transactions]);
 
+  // Deleting or unlinking an account changes data behind every cached view.
+  // Drop this account's detail query and mark the rest stale so nothing
+  // renders the deleted account from a still-fresh cache (e.g. via Back).
+  const invalidateAccountData = useCallback(() => {
+    queryClient.removeQueries({ queryKey: ["accounts", accountId] });
+    queryClient.invalidateQueries({ queryKey: ["accounts"] });
+    queryClient.invalidateQueries({ queryKey: ["transactions"] });
+    queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    queryClient.invalidateQueries({ queryKey: ["net-worth-history"] });
+    queryClient.invalidateQueries({ queryKey: ["spending-history"] });
+  }, [queryClient, accountId]);
+
   const handleDeleteAccount = useCallback(async () => {
     if (!account) return;
     if (!confirm(`Delete "${account.name}" and all its transactions?`)) return;
     setIsDeleting(true);
     try {
       await apiFetch(`/api/accounts/${accountId}`, { method: "DELETE" });
+      invalidateAccountData();
       router.push("/accounts");
     } catch {
       setIsDeleting(false);
     }
-  }, [account, accountId, router]);
+  }, [account, accountId, invalidateAccountData, router]);
 
   const handleUnlinkBank = useCallback(async (deleteAccounts: boolean) => {
     if (!account?.plaid_item_id) return;
@@ -156,11 +171,12 @@ export default function AccountDetailPage() {
     try {
       const params = deleteAccounts ? "?delete_accounts=true" : "";
       await apiFetch(`/api/plaid/items/${account.plaid_item_id}${params}`, { method: "DELETE" });
+      invalidateAccountData();
       router.push("/accounts");
     } catch {
       setIsDeleting(false);
     }
-  }, [account, router]);
+  }, [account, invalidateAccountData, router]);
 
   const config = account
     ? ACCOUNT_TYPE_CONFIG[account.type] || { label: account.type, icon: Building2, color: "text-gray-600 bg-gray-100 dark:bg-gray-900/30" }
@@ -178,16 +194,25 @@ export default function AccountDetailPage() {
             <Skeleton className="h-32" />
           </>
         ) : isAccountError ? (
-          <div className="p-4 text-sm text-destructive bg-destructive/10 rounded-md flex items-center justify-between gap-4">
-            <span>
-              {accountError instanceof Error
-                ? accountError.message
-                : "Failed to load account"}
-            </span>
-            <Button variant="outline" size="sm" onClick={() => refetchAccount()}>
-              Retry
-            </Button>
-          </div>
+          accountError instanceof ApiError && accountError.status === 404 ? (
+            <div className="text-center py-12 space-y-3">
+              <p className="text-muted-foreground">Account not found</p>
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/accounts">Back to accounts</Link>
+              </Button>
+            </div>
+          ) : (
+            <div className="p-4 text-sm text-destructive bg-destructive/10 rounded-md flex items-center justify-between gap-4">
+              <span>
+                {accountError instanceof Error
+                  ? accountError.message
+                  : "Failed to load account"}
+              </span>
+              <Button variant="outline" size="sm" onClick={() => refetchAccount()}>
+                Retry
+              </Button>
+            </div>
+          )
         ) : !account ? (
           <div className="text-center py-12 text-muted-foreground">Account not found</div>
         ) : (

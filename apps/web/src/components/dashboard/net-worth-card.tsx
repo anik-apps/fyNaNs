@@ -56,9 +56,13 @@ export function NetWorthCard({
   const [period, setPeriod] = useState(DEFAULT_NET_WORTH_PERIOD);
   const [modalOpen, setModalOpen] = useState(false);
 
-  const { data: history, isPending } = useQuery(
-    netWorthHistoryQueryOptions(period)
-  );
+  const {
+    data: history,
+    isPending,
+    isError,
+    error,
+    refetch,
+  } = useQuery(netWorthHistoryQueryOptions(period));
   const chartData = history?.points ?? [];
 
   const periodButtons = (
@@ -129,6 +133,25 @@ export function NetWorthCard({
           {isPending && (
             <div className="h-32 flex items-center justify-center text-xs text-muted-foreground">
               Loading chart...
+            </div>
+          )}
+          {isError && (
+            <div className="h-32 flex items-center justify-center">
+              <div className="p-2 text-xs text-destructive bg-destructive/10 rounded-md flex items-center gap-3">
+                <span>
+                  {error instanceof Error
+                    ? error.message
+                    : "Failed to load chart"}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-6 px-2 text-xs"
+                  onClick={() => refetch()}
+                >
+                  Retry
+                </Button>
+              </div>
             </div>
           )}
 

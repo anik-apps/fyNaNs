@@ -14,11 +14,14 @@ export function QueryProvider({ children }: { children: ReactNode }) {
             staleTime: 30_000,
             refetchOnWindowFocus: true,
             retry: (failureCount, error) => {
-              // Never retry client errors (4xx)
+              // Never retry client errors (4xx), except transient ones:
+              // 408 Request Timeout and 429 Too Many Requests.
               if (
                 error instanceof ApiError &&
                 error.status >= 400 &&
-                error.status < 500
+                error.status < 500 &&
+                error.status !== 408 &&
+                error.status !== 429
               ) {
                 return false;
               }

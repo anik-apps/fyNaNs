@@ -108,6 +108,10 @@ export async function apiFetch<T>(
     } else {
       if (typeof window !== "undefined") {
         window.location.href = "/login";
+        // The redirect is asynchronous: if we threw here, callers would
+        // flash error UI (and Retry could re-fire requests) while the page
+        // unloads. Return a promise that never settles instead.
+        return new Promise<T>(() => {});
       }
     }
   }
@@ -116,8 +120,20 @@ export async function apiFetch<T>(
     const error = await response
       .json()
       .catch(() => ({ detail: "Request failed" }));
+    const detail = error.detail;
+    // FastAPI 422 responses carry `detail` as an array of validation error
+    // objects — flatten to their messages instead of "[object Object]".
+    const message =
+      typeof detail === "string"
+        ? detail
+        : Array.isArray(detail)
+          ? detail
+              .map((d: { msg?: string }) => d?.msg)
+              .filter(Boolean)
+              .join("; ")
+          : "";
     throw new ApiError(
-      error.detail || `API error: ${response.status}`,
+      message || `API error: ${response.status}`,
       response.status
     );
   }
