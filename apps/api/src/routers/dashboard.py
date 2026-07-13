@@ -2,11 +2,12 @@ from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.constants import INCOME_CATEGORIES, TRANSFER_CATEGORIES
 from src.models.account import Account
+from src.models.category import Category
 from src.models.transaction import Transaction
 from src.models.user import User
 from src.routers.deps import get_current_user, get_db
@@ -87,42 +88,34 @@ async def net_worth_history(
     row = acct_result.one()
     current_nw = float(row.assets) - float(row.liabilities)
 
-    # Get all transactions in the period with their categories
-    from src.models.category import Category
-
+    # Aggregate per-day NW deltas in SQL using category + Plaid sign convention.
+    # Plaid sign convention (all account types):
+    #   positive = money out, negative = money in
+    # Category overrides sign for known income/transfer categories:
+    # transfers are excluded entirely; income counts as money in.
+    # To reverse a day going backwards: subtract money in, add back money out.
+    delta = case(
+        (Category.name.in_(list(INCOME_CATEGORIES)), -func.abs(Transaction.amount)),
+        (Transaction.amount < 0, -func.abs(Transaction.amount)),
+        else_=func.abs(Transaction.amount),
+    )
     txn_result = await db.execute(
-        select(Transaction.date, Transaction.amount, Category.name)
+        select(Transaction.date, func.sum(delta).label("delta"))
         .outerjoin(Category, Transaction.category_id == Category.id)
         .where(
             Transaction.user_id == user_id,
             Transaction.date >= start_date,
+            Transaction.date <= today,
+            or_(
+                Transaction.category_id.is_(None),
+                Category.name.notin_(list(TRANSFER_CATEGORIES)),
+            ),
         )
-        .order_by(Transaction.date.desc())
+        .group_by(Transaction.date)
     )
-    transactions = txn_result.all()
-
-    # Determine NW impact using category + Plaid sign convention.
-    # Plaid sign convention (all account types):
-    #   positive = money out, negative = money in
-    # Category overrides sign for known income/transfer categories.
-    daily_deltas: dict[date, float] = {}
-    for txn_date, amount, cat_name in transactions:
-        d = txn_date if isinstance(txn_date, date) else date.fromisoformat(str(txn_date))
-        amt = float(amount)
-
-        if cat_name in TRANSFER_CATEGORIES:
-            continue
-        elif cat_name in INCOME_CATEGORIES:
-            # Income increased NW → to reverse going backwards, subtract
-            delta = -abs(amt)
-        elif amt < 0:
-            # Negative = money in (income) per Plaid convention
-            delta = -abs(amt)
-        else:
-            # Positive = money out (expense)
-            delta = abs(amt)
-
-        daily_deltas[d] = daily_deltas.get(d, 0) + delta
+    daily_deltas: dict[date, float] = {
+        row.date: float(row.delta) for row in txn_result.all()
+    }
 
     # Generate data points by working backwards
     points: list[NetWorthPoint] = []
@@ -185,48 +178,46 @@ async def spending_history(
     user_id = str(current_user.id)
     today = date.today()
 
-    # Determine periods
+    # Determine period buckets (oldest first)
     points: list[SpendingBarPoint] = []
 
     if view == "monthly":
+        period_starts: list[date] = []
         for i in range(months - 1, -1, -1):
-            # Calculate month start/end
             m = today.month - i
             y = today.year
             while m <= 0:
                 m += 12
                 y -= 1
-            month_start = date(y, m, 1)
-            month_end = date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)
-
-            label = month_start.strftime("%b %Y")
-            spending, income = await _compute_period_totals(
-                db, user_id, month_start, month_end,
-                INCOME_CATEGORIES, TRANSFER_CATEGORIES,
-            )
-            points.append(SpendingBarPoint(
-                label=label,
-                period_start=month_start.isoformat(),
-                spending=round(spending, 2),
-                income=round(income, 2),
-            ))
+            period_starts.append(date(y, m, 1))
+        last = period_starts[-1]
+        range_end = (
+            date(last.year + 1, 1, 1) if last.month == 12
+            else date(last.year, last.month + 1, 1)
+        )
+        totals = await _compute_period_totals(
+            db, user_id, period_starts[0], range_end, "month",
+        )
+        labels = [d.strftime("%b %Y") for d in period_starts]
     else:  # yearly
         num_years = min(months // 12 + 1, 10)
-        for i in range(num_years - 1, -1, -1):
-            y = today.year - i
-            year_start = date(y, 1, 1)
-            year_end = date(y + 1, 1, 1)
-            label = str(y)
-            spending, income = await _compute_period_totals(
-                db, user_id, year_start, year_end,
-                INCOME_CATEGORIES, TRANSFER_CATEGORIES,
-            )
-            points.append(SpendingBarPoint(
-                label=label,
-                period_start=year_start.isoformat(),
-                spending=round(spending, 2),
-                income=round(income, 2),
-            ))
+        period_starts = [
+            date(today.year - i, 1, 1) for i in range(num_years - 1, -1, -1)
+        ]
+        range_end = date(today.year + 1, 1, 1)
+        totals = await _compute_period_totals(
+            db, user_id, period_starts[0], range_end, "year",
+        )
+        labels = [str(d.year) for d in period_starts]
+
+    for period_start, label in zip(period_starts, labels, strict=True):
+        spending, income = totals.get(period_start, (0.0, 0.0))
+        points.append(SpendingBarPoint(
+            label=label,
+            period_start=period_start.isoformat(),
+            spending=round(spending, 2),
+            income=round(income, 2),
+        ))
 
     return SpendingHistoryResponse(points=points, view=view)
 
@@ -234,37 +225,50 @@ async def spending_history(
 async def _compute_period_totals(
     db: AsyncSession,
     user_id: str,
-    period_start: date,
-    period_end: date,
-    income_categories: frozenset[str],
-    transfer_categories: frozenset[str],
-) -> tuple[float, float]:
-    """Compute total spending and income for a period.
+    range_start: date,
+    range_end: date,
+    granularity: str,
+) -> dict[date, tuple[float, float]]:
+    """Compute spending and income totals per period bucket in one query.
 
     Uses Plaid sign convention (positive = out, negative = in)
-    with category override for known income/transfer categories.
-    """
-    from src.models.category import Category
+    with category override for known income/transfer categories:
+    transfers are excluded entirely; income-category or negative
+    amounts count (as abs) toward income, the rest toward spending.
 
+    Returns {bucket start date: (spending, income)}, where buckets are
+    date_trunc'd to ``granularity`` ("month" or "year"). Buckets with no
+    transactions are absent.
+    """
+    is_income = or_(
+        Category.name.in_(list(INCOME_CATEGORIES)),
+        Transaction.amount < 0,
+    )
+    bucket = func.date_trunc(granularity, Transaction.date).label("bucket")
     result = await db.execute(
-        select(Transaction.amount, Category.name)
+        select(
+            bucket,
+            func.sum(
+                case((is_income, 0), else_=func.abs(Transaction.amount))
+            ).label("spending"),
+            func.sum(
+                case((is_income, func.abs(Transaction.amount)), else_=0)
+            ).label("income"),
+        )
         .outerjoin(Category, Transaction.category_id == Category.id)
         .where(
             Transaction.user_id == user_id,
-            Transaction.date >= period_start,
-            Transaction.date < period_end,
+            Transaction.date >= range_start,
+            Transaction.date < range_end,
+            or_(
+                Transaction.category_id.is_(None),
+                Category.name.notin_(list(TRANSFER_CATEGORIES)),
+            ),
         )
+        .group_by(bucket)
     )
 
-    spending = 0.0
-    income = 0.0
-    for amount, cat_name in result.all():
-        amt = float(amount)
-        if cat_name in transfer_categories:
-            continue
-        elif cat_name in income_categories or amt < 0:
-            income += abs(amt)
-        else:
-            spending += abs(amt)
-
-    return spending, income
+    return {
+        row.bucket.date(): (float(row.spending), float(row.income))
+        for row in result.all()
+    }
