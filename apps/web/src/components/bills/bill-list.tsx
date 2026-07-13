@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { BillCard } from "./bill-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -21,29 +21,30 @@ interface Bill {
 }
 
 export function BillList() {
-  const [bills, setBills] = useState<Bill[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { data: bills, isPending, isError, error, refetch } = useQuery({
+    queryKey: ["bills"],
+    queryFn: () => apiFetch<Bill[]>("/api/bills"),
+  });
 
-  useEffect(() => {
-    async function fetchBills() {
-      try {
-        const data = await apiFetch<Bill[]>("/api/bills");
-        setBills(data);
-      } catch {
-        // handled by API client
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    fetchBills();
-  }, []);
-
-  if (isLoading) {
+  if (isPending) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {Array.from({ length: 4 }).map((_, i) => (
           <Skeleton key={i} className="h-32" />
         ))}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="p-4 text-sm text-destructive bg-destructive/10 rounded-md flex items-center justify-between gap-4">
+        <span>
+          {error instanceof Error ? error.message : "Failed to load bills"}
+        </span>
+        <Button variant="outline" size="sm" onClick={() => refetch()}>
+          Retry
+        </Button>
       </div>
     );
   }

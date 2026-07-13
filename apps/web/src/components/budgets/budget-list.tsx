@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { BudgetProgress } from "./budget-progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -21,29 +21,30 @@ interface Budget {
 }
 
 export function BudgetList() {
-  const [budgets, setBudgets] = useState<Budget[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { data: budgets, isPending, isError, error, refetch } = useQuery({
+    queryKey: ["budgets"],
+    queryFn: () => apiFetch<Budget[]>("/api/budgets"),
+  });
 
-  useEffect(() => {
-    async function fetchBudgets() {
-      try {
-        const data = await apiFetch<Budget[]>("/api/budgets");
-        setBudgets(data);
-      } catch {
-        // handled by API client
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    fetchBudgets();
-  }, []);
-
-  if (isLoading) {
+  if (isPending) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {Array.from({ length: 6 }).map((_, i) => (
           <Skeleton key={i} className="h-40" />
         ))}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="p-4 text-sm text-destructive bg-destructive/10 rounded-md flex items-center justify-between gap-4">
+        <span>
+          {error instanceof Error ? error.message : "Failed to load budgets"}
+        </span>
+        <Button variant="outline" size="sm" onClick={() => refetch()}>
+          Retry
+        </Button>
       </div>
     );
   }
