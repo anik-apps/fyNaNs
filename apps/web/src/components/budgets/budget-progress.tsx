@@ -1,47 +1,83 @@
 "use client";
 
+import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { CardActionsMenu } from "@/components/shared/card-actions-menu";
+import { BudgetForm } from "./budget-form";
+import { apiFetch } from "@/lib/api-client";
 import { formatCurrency, cn } from "@/lib/utils";
+import type { Budget } from "./types";
 
 interface BudgetProgressProps {
-  id: string;
-  category_name: string;
-  category_color: string;
-  category_icon: string;
-  amount_limit: string;
-  amount_spent: string;
-  percent_spent: number;
-  period: string;
+  budget: Budget;
 }
 
-export function BudgetProgress({
-  category_name,
-  amount_limit,
-  amount_spent,
-  percent_spent,
-  period,
-}: BudgetProgressProps) {
-  const remaining = parseFloat(amount_limit) - parseFloat(amount_spent);
-  const isOverBudget = percent_spent > 100;
+export function BudgetProgress({ budget }: BudgetProgressProps) {
+  const { category_name, amount_limit, current_spend, period } = budget;
+  const categoryName = category_name ?? "Uncategorized";
+
+  const [editOpen, setEditOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const queryClient = useQueryClient();
+
+  const deleteMutation = useMutation({
+    mutationFn: () =>
+      apiFetch(`/api/budgets/${budget.id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["budgets"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      setDeleteOpen(false);
+    },
+  });
+
+  // GET /api/budgets returns current_spend (not percent_spent) — derive it.
+  const limit = parseFloat(amount_limit);
+  const spent = parseFloat(current_spend);
+  const percentSpent = limit > 0 ? (spent / limit) * 100 : 0;
+  const remaining = limit - spent;
+  const isOverBudget = percentSpent > 100;
 
   return (
     <Card>
       <CardContent className="pt-6 space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="font-medium">{category_name}</h3>
-          <span className="text-xs text-muted-foreground capitalize">
-            {period}
-          </span>
+          <h3 className="font-medium">{categoryName}</h3>
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-muted-foreground capitalize">
+              {period}
+            </span>
+            <CardActionsMenu
+              label={`Actions for ${categoryName} budget`}
+              onEdit={() => setEditOpen(true)}
+              deleteTitle={`Delete budget for "${categoryName}"?`}
+              deleteDescription="This removes the budget permanently."
+              deleteOpen={deleteOpen}
+              onDeleteOpenChange={(open) => {
+                setDeleteOpen(open);
+                if (!open) deleteMutation.reset();
+              }}
+              onConfirmDelete={() => deleteMutation.mutate()}
+              isDeleting={deleteMutation.isPending}
+              deleteError={
+                deleteMutation.error
+                  ? deleteMutation.error instanceof Error
+                    ? deleteMutation.error.message
+                    : "Failed to delete budget"
+                  : null
+              }
+            />
+          </div>
         </div>
 
         <Progress
-          value={Math.min(percent_spent, 100)}
+          value={Math.min(percentSpent, 100)}
           className={cn(
             "h-3",
             isOverBudget
               ? "[&>div]:bg-red-500"
-              : percent_spent >= 80
+              : percentSpent >= 80
                 ? "[&>div]:bg-yellow-500"
                 : "[&>div]:bg-green-500"
           )}
@@ -49,7 +85,7 @@ export function BudgetProgress({
 
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">
-            {formatCurrency(amount_spent)} / {formatCurrency(amount_limit)}
+            {formatCurrency(current_spend)} / {formatCurrency(amount_limit)}
           </span>
           <span
             className={cn(
@@ -64,9 +100,16 @@ export function BudgetProgress({
         </div>
 
         <div className="text-xs text-muted-foreground text-right">
-          {Math.round(percent_spent)}% used
+          {Math.round(percentSpent)}% used
         </div>
       </CardContent>
+      {editOpen && (
+        <BudgetForm
+          editing={budget}
+          open={editOpen}
+          onOpenChange={setEditOpen}
+        />
+      )}
     </Card>
   );
 }

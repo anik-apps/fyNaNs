@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { AccountList } from "@/components/accounts/account-list";
 import { AddAccountDialog } from "@/components/accounts/add-account-dialog";
 import { PlaidLinkButton } from "@/components/accounts/plaid-link-button";
@@ -9,13 +10,13 @@ import { RefreshCw } from "lucide-react";
 import { apiFetch } from "@/lib/api-client";
 
 export default function AccountsPage() {
-  const [refreshKey, setRefreshKey] = useState(0);
+  const queryClient = useQueryClient();
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
 
-  function handleAccountsChanged() {
-    setRefreshKey((k) => k + 1);
-  }
+  const handleAccountsChanged = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["accounts"] });
+  }, [queryClient]);
 
   const handleSyncAll = useCallback(async () => {
     setIsSyncing(true);
@@ -30,13 +31,20 @@ export default function AccountsPage() {
       setSyncResult(
         `Synced ${result.items_synced} bank(s): ${result.added} new, ${result.modified} updated, ${result.removed} removed`
       );
-      setRefreshKey((k) => k + 1);
+      // A sync changes far more than account balances — refresh everything
+      // derived from transactions as well.
+      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["budgets"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["net-worth-history"] });
+      queryClient.invalidateQueries({ queryKey: ["spending-history"] });
     } catch {
       setSyncResult("Sync failed");
     } finally {
       setIsSyncing(false);
     }
-  }, []);
+  }, [queryClient]);
 
   return (
     <div className="space-y-4">
@@ -63,7 +71,7 @@ export default function AccountsPage() {
           {syncResult}
         </p>
       )}
-      <AccountList key={refreshKey} />
+      <AccountList />
     </div>
   );
 }

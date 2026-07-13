@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useMemo } from "react";
+import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { TransactionRow } from "./transaction-row";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,11 @@ interface Transaction {
   category_color: string;
   account_name: string;
   is_pending: boolean;
+}
+
+interface TransactionPage {
+  items: Transaction[];
+  next_cursor: string | null;
 }
 
 interface TransactionListProps {
@@ -58,85 +64,60 @@ function groupTransactionsByDate(
   return groups;
 }
 
+function fetchTransactionPage(
+  filters: {
+    search: string;
+    category: string;
+    accountId: string;
+    dateFrom?: string;
+  },
+  cursor: string | null
+): Promise<TransactionPage> {
+  const params = new URLSearchParams();
+  params.set("limit", "30");
+  if (filters.search) params.set("search", filters.search);
+  if (filters.category && filters.category !== "all")
+    params.set("category_id", filters.category);
+  if (filters.accountId && filters.accountId !== "all")
+    params.set("account_id", filters.accountId);
+  if (filters.dateFrom) params.set("date_from", filters.dateFrom);
+  if (cursor) params.set("cursor", cursor);
+
+  return apiFetch<TransactionPage>(`/api/transactions?${params.toString()}`);
+}
+
 export function TransactionList({
   search,
   category,
   accountId,
   dateFrom,
 }: TransactionListProps) {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [cursor, setCursor] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    data,
+    isPending,
+    isError,
+    error,
+    isFetchNextPageError,
+    refetch,
+    isPlaceholderData,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+  } = useInfiniteQuery({
+    queryKey: ["transactions", { search, category, accountId, dateFrom }],
+    queryFn: ({ pageParam }) =>
+      fetchTransactionPage({ search, category, accountId, dateFrom }, pageParam),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.next_cursor,
+    // Keep the previous results visible (dimmed) while a filter/search change
+    // refetches, instead of blanking the list back to skeletons.
+    placeholderData: keepPreviousData,
+  });
 
-  const fetchTransactions = useCallback(
-    async (nextCursor?: string) => {
-      const params = new URLSearchParams();
-      params.set("limit", "30");
-      if (search) params.set("search", search);
-      if (category && category !== "all") params.set("category_id", category);
-      if (accountId && accountId !== "all")
-        params.set("account_id", accountId);
-      if (dateFrom) params.set("date_from", dateFrom);
-      if (nextCursor) params.set("cursor", nextCursor);
-
-      const data = await apiFetch<{
-        items: Transaction[];
-        next_cursor: string | null;
-      }>(`/api/transactions?${params.toString()}`);
-
-      return data;
-    },
-    [search, category, accountId, dateFrom]
+  const transactions = useMemo(
+    () => data?.pages.flatMap((page) => page.items) ?? [],
+    [data]
   );
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const data = await fetchTransactions();
-        if (!cancelled) {
-          setTransactions(data.items);
-          setCursor(data.next_cursor);
-          setHasMore(!!data.next_cursor);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(
-            err instanceof Error ? err.message : "Failed to load transactions"
-          );
-        }
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    }
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [fetchTransactions]);
-
-  async function loadMore() {
-    if (!cursor) return;
-    setIsLoadingMore(true);
-    try {
-      const data = await fetchTransactions(cursor);
-      setTransactions((prev) => [...prev, ...data.items]);
-      setCursor(data.next_cursor);
-      setHasMore(!!data.next_cursor);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to load more transactions"
-      );
-    } finally {
-      setIsLoadingMore(false);
-    }
-  }
-
   const grouped = useMemo(
     () => groupTransactionsByDate(transactions),
     [transactions]
@@ -146,7 +127,7 @@ export function TransactionList({
     [grouped]
   );
 
-  if (isLoading) {
+  if (isPending) {
     return (
       <div className="space-y-3">
         {Array.from({ length: 8 }).map((_, i) => (
@@ -156,10 +137,19 @@ export function TransactionList({
     );
   }
 
-  if (error) {
+  // Only blank the screen when we have nothing to show; a failed page fetch
+  // or background refetch must not wipe out already-loaded transactions.
+  if (isError && !data) {
     return (
-      <div className="p-4 text-sm text-destructive bg-destructive/10 rounded-md">
-        {error}
+      <div className="p-4 text-sm text-destructive bg-destructive/10 rounded-md flex items-center justify-between gap-4">
+        <span>
+          {error instanceof Error
+            ? error.message
+            : "Failed to load transactions"}
+        </span>
+        <Button variant="outline" size="sm" onClick={() => refetch()}>
+          Retry
+        </Button>
       </div>
     );
   }
@@ -184,7 +174,11 @@ export function TransactionList({
   }
 
   return (
-    <div>
+    <div
+      className={
+        isPlaceholderData ? "opacity-50 transition-opacity" : undefined
+      }
+    >
       {sortedDateKeys.map((dateKey) => (
         <div key={dateKey} className="mb-4">
           <div className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 py-1.5 px-2">
@@ -199,14 +193,34 @@ export function TransactionList({
           </div>
         </div>
       ))}
-      {hasMore && (
+      {isError && (
+        <div className="mt-4 p-3 text-sm text-destructive bg-destructive/10 rounded-md flex items-center justify-between gap-4">
+          <span>
+            {isFetchNextPageError
+              ? "Failed to load more transactions"
+              : error instanceof Error
+                ? error.message
+                : "Failed to refresh transactions"}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              isFetchNextPageError ? fetchNextPage() : refetch()
+            }
+          >
+            Retry
+          </Button>
+        </div>
+      )}
+      {hasNextPage && (
         <div className="mt-4 text-center">
           <Button
             variant="outline"
-            onClick={loadMore}
-            disabled={isLoadingMore}
+            onClick={() => fetchNextPage()}
+            disabled={isFetchingNextPage}
           >
-            {isLoadingMore ? (
+            {isFetchingNextPage ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Loading...

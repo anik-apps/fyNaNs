@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiFetch } from "@/lib/api-client";
+import { formatCurrency } from "@/lib/utils";
 
 export function ReopenDialog({
   goalId,
@@ -47,7 +48,7 @@ export function ReopenDialog({
       <DialogContent className="sm:max-w-sm">
         <DialogHeader><DialogTitle>Raise Target</DialogTitle></DialogHeader>
         <form onSubmit={submit} className="space-y-3">
-          <div className="text-sm text-muted-foreground">Current progress: ${Number(currentAmount).toFixed(2)}</div>
+          <div className="text-sm text-muted-foreground">Current progress: {formatCurrency(currentAmount)}</div>
           <div>
             <Label htmlFor="new-target">New target amount</Label>
             <Input

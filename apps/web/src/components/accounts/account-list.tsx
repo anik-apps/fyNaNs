@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { AccountCard } from "./account-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -19,25 +19,12 @@ interface Account {
 }
 
 export function AccountList() {
-  const [accounts, setAccounts] = useState<Account[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data: accounts, isPending, isError, error } = useQuery({
+    queryKey: ["accounts"],
+    queryFn: () => apiFetch<Account[]>("/api/accounts"),
+  });
 
-  useEffect(() => {
-    async function fetchAccounts() {
-      try {
-        const data = await apiFetch<Account[]>("/api/accounts");
-        setAccounts(data);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load accounts");
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    fetchAccounts();
-  }, []);
-
-  if (isLoading) {
+  if (isPending) {
     return (
       <div className="space-y-3">
         {Array.from({ length: 4 }).map((_, i) => (
@@ -47,10 +34,10 @@ export function AccountList() {
     );
   }
 
-  if (error) {
+  if (isError) {
     return (
       <div className="p-4 text-sm text-destructive bg-destructive/10 rounded-md">
-        {error}
+        {error instanceof Error ? error.message : "Failed to load accounts"}
       </div>
     );
   }
