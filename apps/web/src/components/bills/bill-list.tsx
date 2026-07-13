@@ -8,17 +8,7 @@ import { apiFetch } from "@/lib/api-client";
 import { Receipt } from "lucide-react";
 import Link from "next/link";
 import { ROUTES } from "@/lib/constants";
-
-interface Bill {
-  id: string;
-  name: string;
-  amount: string;
-  frequency: string;
-  next_due_date: string;
-  is_auto_pay: boolean;
-  days_until_due: number;
-  category_name: string | null;
-}
+import type { Bill } from "./types";
 
 export function BillList() {
   const { data: bills, isPending, isError, error, refetch } = useQuery({
@@ -67,7 +57,7 @@ export function BillList() {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       {bills.map((bill) => (
-        <BillCard key={bill.id} {...bill} />
+        <BillCard key={bill.id} bill={bill} />
       ))}
     </div>
   );

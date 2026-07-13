@@ -8,17 +8,7 @@ import { apiFetch } from "@/lib/api-client";
 import { PieChart } from "lucide-react";
 import Link from "next/link";
 import { ROUTES } from "@/lib/constants";
-
-interface Budget {
-  id: string;
-  category_name: string;
-  category_color: string;
-  category_icon: string;
-  amount_limit: string;
-  amount_spent: string;
-  percent_spent: number;
-  period: string;
-}
+import type { Budget } from "./types";
 
 export function BudgetList() {
   const { data: budgets, isPending, isError, error, refetch } = useQuery({
@@ -67,7 +57,7 @@ export function BudgetList() {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       {budgets.map((budget) => (
-        <BudgetProgress key={budget.id} {...budget} />
+        <BudgetProgress key={budget.id} budget={budget} />
       ))}
     </div>
   );
