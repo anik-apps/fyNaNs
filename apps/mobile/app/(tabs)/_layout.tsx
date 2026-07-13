@@ -1,5 +1,6 @@
 import { Tabs, useRouter } from "expo-router";
 import { TouchableOpacity } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   LayoutDashboard,
   Landmark,
@@ -23,6 +24,7 @@ function HeaderProfileButton() {
 }
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
   return (
     <Tabs
       screenOptions={{
@@ -33,9 +35,10 @@ export default function TabLayout() {
         tabBarStyle: {
           borderTopWidth: 1,
           borderTopColor: "#E5E7EB",
-          paddingBottom: 4,
+          // Keep the tab bar clear of the home indicator on gesture-nav devices.
+          paddingBottom: Math.max(insets.bottom, 4),
           paddingTop: 4,
-          height: 56,
+          height: 56 + insets.bottom,
         },
       }}
     >
