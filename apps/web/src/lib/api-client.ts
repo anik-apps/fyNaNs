@@ -1,5 +1,19 @@
 import { API_URL } from "./constants";
 
+/**
+ * Error thrown by apiFetch for non-OK responses, carrying the HTTP status.
+ * Used by React Query's retry predicate to skip retries on 4xx errors.
+ */
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 let accessToken: string | null = null;
 
 export function setAccessToken(token: string | null) {
@@ -102,7 +116,10 @@ export async function apiFetch<T>(
     const error = await response
       .json()
       .catch(() => ({ detail: "Request failed" }));
-    throw new Error(error.detail || `API error: ${response.status}`);
+    throw new ApiError(
+      error.detail || `API error: ${response.status}`,
+      response.status
+    );
   }
 
   // Handle 204 No Content

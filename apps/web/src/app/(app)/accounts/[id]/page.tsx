@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,10 +17,15 @@ import {
   Building2, Calendar, Expand, Search, Trash2,
 } from "lucide-react";
 import { ACCOUNT_TYPE_CONFIG } from "@/lib/account-type-config";
-import {
-  ResponsiveContainer, PieChart, Pie, Cell, Tooltip,
-} from "recharts";
 import { useDebounce } from "@/hooks/use-debounce";
+
+const CategoryPieChart = dynamic(
+  () => import("@/components/accounts/category-pie-chart"),
+  {
+    ssr: false,
+    loading: () => <Skeleton className="w-28 h-28 rounded-full" />,
+  }
+);
 
 interface AccountDetail {
   id: string;
@@ -60,56 +67,10 @@ function getDateFrom(range: string): string | undefined {
   return d.toISOString().split("T")[0];
 }
 
-function CategoryPieChart({
-  data,
-  size = 112,
-  innerRadius = 25,
-  outerRadius = 50,
-}: {
-  data: Array<{ name: string; color: string; total: number }>;
-  size?: number;
-  innerRadius?: number;
-  outerRadius?: number;
-}) {
-  return (
-    <ResponsiveContainer width={size} height={size}>
-      <PieChart>
-        <Pie
-          data={data}
-          dataKey="total"
-          nameKey="name"
-          cx="50%"
-          cy="50%"
-          innerRadius={innerRadius}
-          outerRadius={outerRadius}
-          paddingAngle={2}
-          strokeWidth={0}
-        >
-          {data.map((entry, i) => (
-            <Cell key={i} fill={entry.color} />
-          ))}
-        </Pie>
-        <Tooltip
-          formatter={(value: number) => formatCurrency(value)}
-          contentStyle={{
-            fontSize: "12px",
-            borderRadius: "6px",
-            border: "1px solid var(--border)",
-            background: "var(--popover)",
-          }}
-        />
-      </PieChart>
-    </ResponsiveContainer>
-  );
-}
-
 export default function AccountDetailPage() {
   const params = useParams();
   const router = useRouter();
   const accountId = params.id as string;
-  const [account, setAccount] = useState<AccountDetail | null>(null);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
   const [chartModalOpen, setChartModalOpen] = useState(false);
 
@@ -120,40 +81,44 @@ export default function AccountDetailPage() {
 
   const dateFrom = useMemo(() => getDateFrom(timeRange), [timeRange]);
 
-  const fetchTransactions = useCallback(async () => {
-    const params = new URLSearchParams();
-    params.set("account_id", accountId);
-    params.set("limit", "50");
-    if (debouncedSearch) params.set("search", debouncedSearch);
-    if (dateFrom) params.set("date_from", dateFrom);
+  // Account and transactions load in parallel — neither gates the other
+  const {
+    data: account,
+    isPending: isAccountPending,
+    isError: isAccountError,
+    error: accountError,
+    refetch: refetchAccount,
+  } = useQuery({
+    queryKey: ["accounts", accountId],
+    queryFn: () => apiFetch<AccountDetail>(`/api/accounts/${accountId}`),
+  });
 
-    try {
-      const data = await apiFetch<{ items: Transaction[] }>(
-        `/api/transactions?${params.toString()}`
+  const {
+    data: transactionsData,
+    isPending: isTransactionsPending,
+    isError: isTransactionsError,
+    error: transactionsError,
+    refetch: refetchTransactions,
+  } = useQuery({
+    queryKey: [
+      "transactions",
+      { account_id: accountId, search: debouncedSearch, date_from: dateFrom },
+    ],
+    queryFn: () => {
+      const searchParams = new URLSearchParams();
+      searchParams.set("account_id", accountId);
+      searchParams.set("limit", "50");
+      if (debouncedSearch) searchParams.set("search", debouncedSearch);
+      if (dateFrom) searchParams.set("date_from", dateFrom);
+      return apiFetch<{ items: Transaction[] }>(
+        `/api/transactions?${searchParams.toString()}`
       );
-      setTransactions(data.items);
-    } catch {
-      // handled by API client
-    }
-  }, [accountId, debouncedSearch, dateFrom]);
-
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const acct = await apiFetch<AccountDetail>(`/api/accounts/${accountId}`);
-        setAccount(acct);
-      } catch {
-        // handled
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    fetchData();
-  }, [accountId]);
-
-  useEffect(() => {
-    if (!isLoading) fetchTransactions();
-  }, [isLoading, fetchTransactions]);
+    },
+  });
+  const transactions = useMemo(
+    () => transactionsData?.items ?? [],
+    [transactionsData]
+  );
 
   // Compute category breakdown for pie chart
   const categoryBreakdown = useMemo(() => {
@@ -197,102 +162,113 @@ export default function AccountDetailPage() {
     }
   }, [account, router]);
 
-  if (isLoading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-32" />
-        <Skeleton className="h-64" />
-      </div>
-    );
-  }
-
-  if (!account) {
-    return <div className="text-center py-12 text-muted-foreground">Account not found</div>;
-  }
-
-  const config = ACCOUNT_TYPE_CONFIG[account.type] || { label: account.type, icon: Building2, color: "text-gray-600 bg-gray-100 dark:bg-gray-900/30" };
-  const Icon = config.icon;
-  const isLiability = account.type === "credit" || account.type === "loan";
+  const config = account
+    ? ACCOUNT_TYPE_CONFIG[account.type] || { label: account.type, icon: Building2, color: "text-gray-600 bg-gray-100 dark:bg-gray-900/30" }
+    : null;
+  const Icon = config?.icon ?? Building2;
+  const isLiability = account?.type === "credit" || account?.type === "loan";
 
   return (
     <>
       <div className="space-y-4">
-        {/* Header */}
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <h1 className="text-2xl font-bold">{account.name}</h1>
-          <div className="flex gap-2">
-            {!account.is_manual && account.plaid_item_id && (
-              <>
-                <Button variant="outline" size="sm" onClick={() => handleUnlinkBank(false)} disabled={isDeleting}>
-                  Unlink (Keep Data)
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => handleUnlinkBank(true)} disabled={isDeleting} className="text-destructive hover:text-destructive">
-                  Unlink & Delete
-                </Button>
-              </>
-            )}
-            <Button variant="destructive" size="sm" onClick={handleDeleteAccount} disabled={isDeleting}>
-              <Trash2 className="w-4 h-4 mr-1.5" />
-              {isDeleting ? "Deleting..." : "Delete"}
+        {/* Account header + info card */}
+        {isAccountPending ? (
+          <>
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-32" />
+          </>
+        ) : isAccountError ? (
+          <div className="p-4 text-sm text-destructive bg-destructive/10 rounded-md flex items-center justify-between gap-4">
+            <span>
+              {accountError instanceof Error
+                ? accountError.message
+                : "Failed to load account"}
+            </span>
+            <Button variant="outline" size="sm" onClick={() => refetchAccount()}>
+              Retry
             </Button>
           </div>
-        </div>
-
-        {/* Account Info + Pie Chart */}
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              {/* Left: Account info */}
-              <div className="flex items-center gap-4">
-                <div className={cn("w-12 h-12 rounded-full flex items-center justify-center", config.color)}>
-                  <Icon className="w-6 h-6" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">{account.institution_name}</p>
-                  <p className={cn("text-3xl font-bold", isLiability && "text-red-600 dark:text-red-400")}>
-                    {formatCurrency(account.balance, account.currency)}
-                  </p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Badge variant="secondary" className="text-xs">{config.label}</Badge>
-                    {account.is_manual && <Badge variant="outline" className="text-[10px]">Manual</Badge>}
-                    {account.last_synced && (
-                      <span className="text-xs text-muted-foreground">
-                        Synced {formatRelativeDate(account.last_synced)}
-                      </span>
-                    )}
-                  </div>
-                </div>
+        ) : !account ? (
+          <div className="text-center py-12 text-muted-foreground">Account not found</div>
+        ) : (
+          <>
+            {/* Header */}
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <h1 className="text-2xl font-bold">{account.name}</h1>
+              <div className="flex gap-2">
+                {!account.is_manual && account.plaid_item_id && (
+                  <>
+                    <Button variant="outline" size="sm" onClick={() => handleUnlinkBank(false)} disabled={isDeleting}>
+                      Unlink (Keep Data)
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => handleUnlinkBank(true)} disabled={isDeleting} className="text-destructive hover:text-destructive">
+                      Unlink & Delete
+                    </Button>
+                  </>
+                )}
+                <Button variant="destructive" size="sm" onClick={handleDeleteAccount} disabled={isDeleting}>
+                  <Trash2 className="w-4 h-4 mr-1.5" />
+                  {isDeleting ? "Deleting..." : "Delete"}
+                </Button>
               </div>
-
-              {/* Right: Pie chart */}
-              {categoryBreakdown.length > 0 && (
-                <div className="hidden sm:flex items-center gap-3">
-                  <div className="flex-shrink-0 cursor-pointer" onClick={() => setChartModalOpen(true)}>
-                    <CategoryPieChart data={categoryBreakdown} />
-                  </div>
-                  <div className="space-y-1">
-                    {categoryBreakdown.slice(0, 4).map((cat) => (
-                      <div key={cat.name} className="flex items-center gap-1.5 text-xs">
-                        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />
-                        <span className="truncate max-w-[80px]">{cat.name}</span>
-                        <span className="font-medium whitespace-nowrap">{formatCurrency(cat.total)}</span>
-                      </div>
-                    ))}
-                    {categoryBreakdown.length > 4 && (
-                      <button onClick={() => setChartModalOpen(true)} className="text-[10px] text-primary hover:underline">
-                        +{categoryBreakdown.length - 4} more
-                      </button>
-                    )}
-                  </div>
-                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0 ml-1" onClick={() => setChartModalOpen(true)} title="Expand">
-                    <Expand className="w-3.5 h-3.5 text-muted-foreground" />
-                  </Button>
-                </div>
-              )}
             </div>
-          </CardContent>
-        </Card>
+
+            {/* Account Info + Pie Chart */}
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  {/* Left: Account info */}
+                  <div className="flex items-center gap-4">
+                    <div className={cn("w-12 h-12 rounded-full flex items-center justify-center", config?.color)}>
+                      <Icon className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">{account.institution_name}</p>
+                      <p className={cn("text-3xl font-bold", isLiability && "text-red-600 dark:text-red-400")}>
+                        {formatCurrency(account.balance, account.currency)}
+                      </p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Badge variant="secondary" className="text-xs">{config?.label}</Badge>
+                        {account.is_manual && <Badge variant="outline" className="text-[10px]">Manual</Badge>}
+                        {account.last_synced && (
+                          <span className="text-xs text-muted-foreground">
+                            Synced {formatRelativeDate(account.last_synced)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right: Pie chart */}
+                  {categoryBreakdown.length > 0 && (
+                    <div className="hidden sm:flex items-center gap-3">
+                      <div className="flex-shrink-0 cursor-pointer" onClick={() => setChartModalOpen(true)}>
+                        <CategoryPieChart data={categoryBreakdown} />
+                      </div>
+                      <div className="space-y-1">
+                        {categoryBreakdown.slice(0, 4).map((cat) => (
+                          <div key={cat.name} className="flex items-center gap-1.5 text-xs">
+                            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />
+                            <span className="truncate max-w-[80px]">{cat.name}</span>
+                            <span className="font-medium whitespace-nowrap">{formatCurrency(cat.total)}</span>
+                          </div>
+                        ))}
+                        {categoryBreakdown.length > 4 && (
+                          <button onClick={() => setChartModalOpen(true)} className="text-[10px] text-primary hover:underline">
+                            +{categoryBreakdown.length - 4} more
+                          </button>
+                        )}
+                      </div>
+                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0 ml-1" onClick={() => setChartModalOpen(true)} title="Expand">
+                        <Expand className="w-3.5 h-3.5 text-muted-foreground" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </>
+        )}
 
         {/* Filters */}
         <div className="flex flex-col sm:flex-row gap-3">
@@ -325,11 +301,28 @@ export default function AccountDetailPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Transactions ({transactions.length})
+              Transactions{!isTransactionsPending && !isTransactionsError && ` (${transactions.length})`}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {transactions.length === 0 ? (
+            {isTransactionsPending ? (
+              <div className="space-y-3">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Skeleton key={i} className="h-16" />
+                ))}
+              </div>
+            ) : isTransactionsError ? (
+              <div className="p-4 text-sm text-destructive bg-destructive/10 rounded-md flex items-center justify-between gap-4">
+                <span>
+                  {transactionsError instanceof Error
+                    ? transactionsError.message
+                    : "Failed to load transactions"}
+                </span>
+                <Button variant="outline" size="sm" onClick={() => refetchTransactions()}>
+                  Retry
+                </Button>
+              </div>
+            ) : transactions.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-4">
                 No transactions found
               </p>
@@ -345,8 +338,8 @@ export default function AccountDetailPage() {
                     amount={txn.amount}
                     category_name={txn.category_name}
                     category_color={txn.category_color}
-                    account_name={txn.account_name || account.name}
-                    account_type={txn.account_type || account.type}
+                    account_name={txn.account_name || account?.name || ""}
+                    account_type={txn.account_type || account?.type || ""}
                     is_pending={txn.is_pending}
                   />
                 ))}
