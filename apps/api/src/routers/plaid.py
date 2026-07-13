@@ -4,7 +4,7 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -72,8 +72,15 @@ async def exchange_token(
 
 
 @router.post("/webhook")
-async def receive_webhook(request: Request, db: AsyncSession = Depends(get_db)):
-    """Receive Plaid webhooks. Excluded from auth middleware and user rate limiting."""
+async def receive_webhook(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    """Receive Plaid webhooks. Excluded from auth middleware and user rate limiting.
+
+    Acknowledges immediately; the actual sync work runs as a background task.
+    """
     body = await request.body()
     verification_header = request.headers.get("Plaid-Verification")
 
@@ -86,7 +93,7 @@ async def receive_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     webhook_code = payload.get("webhook_code", "")
     item_id = payload.get("item_id", "")
 
-    await handle_webhook_event(db, webhook_type, webhook_code, item_id)
+    await handle_webhook_event(db, background_tasks, webhook_type, webhook_code, item_id)
 
     return {"status": "received"}
 

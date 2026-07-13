@@ -7,6 +7,7 @@ from datetime import date as date_type
 from functools import lru_cache
 
 import plaid
+from fastapi import BackgroundTasks
 from jose import jwt as jose_jwt
 from plaid.api import plaid_api
 from plaid.model.country_code import CountryCode
@@ -23,6 +24,7 @@ from src.core.config import settings
 from src.core.metrics import PLAID_ACCOUNTS_LINKED, PLAID_API_CALLS, PLAID_SYNC, TRANSACTIONS
 from src.core.security import decrypt_value, encrypt_value
 from src.models.account import Account
+from src.models.category import Category
 from src.models.plaid_item import PlaidItem
 from src.models.transaction import Transaction
 
@@ -281,95 +283,116 @@ _PLAID_DETAILED_MAP: dict[str, str] = {
 _PLAID_CATEGORY_MAP = _PLAID_PRIMARY_MAP
 
 
-async def _resolve_category_id(
-    db: AsyncSession,
-    plaid_category_primary: str | None,
-    plaid_category_detailed: str | None = None,
-) -> uuid.UUID | None:
-    """Map Plaid personal_finance_category to our Category.
+class _CategoryResolver:
+    """In-memory Plaid personal_finance_category -> Category.id resolver.
 
-    Resolution order:
-    1. Try detailed category → subcategory (e.g., FOOD_AND_DRINK_GROCERIES → Groceries)
+    Built once per sync run from all system categories so that per-transaction
+    resolution needs zero DB round-trips. Replicates the previous per-row
+    query semantics exactly:
+    1. Try detailed category → subcategory (e.g., FOOD_AND_DRINK_GROCERIES → Groceries),
+       disambiguated by the resolved parent category
     2. Try primary category → parent (e.g., FOOD_AND_DRINK → Food & Drink)
-    3. Try direct plaid_category column match (legacy)
+    3. Try direct plaid_category column match (legacy, case-sensitive)
     4. Fallback to Uncategorized
     """
-    from src.models.category import Category
 
-    # 1. Try detailed → subcategory
-    if plaid_category_detailed:
-        detailed_key = plaid_category_detailed.upper()
-        our_sub_name = _PLAID_DETAILED_MAP.get(detailed_key)
-        if our_sub_name and plaid_category_primary:
-            # Resolve parent category first to disambiguate subcategories
-            parent_name = _PLAID_PRIMARY_MAP.get(plaid_category_primary.upper())
-            if parent_name:
-                parent_result = await db.execute(
-                    select(Category).where(
-                        Category.is_system.is_(True),
-                        Category.name == parent_name,
-                        Category.parent_id.is_(None),
-                    )
-                )
-                parent_cat = parent_result.scalars().first()
-                if parent_cat:
-                    result = await db.execute(
-                        select(Category).where(
-                            Category.is_system.is_(True),
-                            Category.name == our_sub_name,
-                            Category.parent_id == parent_cat.id,
-                        )
-                    )
-                    cat = result.scalars().first()
-                    if cat:
-                        return cat.id
+    def __init__(self, system_categories: list[Category]):
+        self._parent_by_name: dict[str, uuid.UUID] = {}
+        self._sub_by_parent_and_name: dict[tuple[uuid.UUID, str], uuid.UUID] = {}
+        self._legacy_by_plaid_category: dict[str, uuid.UUID] = {}
+        self._uncategorized_id: uuid.UUID | None = None
+        for cat in system_categories:
+            if cat.parent_id is None:
+                self._parent_by_name.setdefault(cat.name, cat.id)
+            else:
+                self._sub_by_parent_and_name.setdefault((cat.parent_id, cat.name), cat.id)
+            if cat.plaid_category is not None:
+                self._legacy_by_plaid_category.setdefault(cat.plaid_category, cat.id)
+            if self._uncategorized_id is None and cat.name == "Uncategorized":
+                self._uncategorized_id = cat.id
 
-    # 2. Try primary → parent category
-    if plaid_category_primary:
-        our_category_name = _PLAID_PRIMARY_MAP.get(plaid_category_primary.upper())
-        if our_category_name:
-            result = await db.execute(
-                select(Category).where(
-                    Category.is_system.is_(True),
-                    Category.name == our_category_name,
-                    Category.parent_id.is_(None),
-                )
-            )
-            cat = result.scalars().first()
-            if cat:
-                return cat.id
+    def resolve(
+        self,
+        plaid_category_primary: str | None,
+        plaid_category_detailed: str | None = None,
+    ) -> uuid.UUID | None:
+        # 1. Try detailed → subcategory
+        if plaid_category_detailed:
+            our_sub_name = _PLAID_DETAILED_MAP.get(plaid_category_detailed.upper())
+            if our_sub_name and plaid_category_primary:
+                # Resolve parent category first to disambiguate subcategories
+                parent_name = _PLAID_PRIMARY_MAP.get(plaid_category_primary.upper())
+                if parent_name:
+                    parent_id = self._parent_by_name.get(parent_name)
+                    if parent_id:
+                        sub_id = self._sub_by_parent_and_name.get((parent_id, our_sub_name))
+                        if sub_id:
+                            return sub_id
 
-        # 3. Legacy: direct plaid_category column match
-        result = await db.execute(
-            select(Category).where(
-                Category.is_system.is_(True),
-                Category.plaid_category == plaid_category_primary,
-            )
-        )
-        cat = result.scalars().first()
-        if cat:
-            return cat.id
+        # 2. Try primary → parent category
+        if plaid_category_primary:
+            our_category_name = _PLAID_PRIMARY_MAP.get(plaid_category_primary.upper())
+            if our_category_name:
+                parent_id = self._parent_by_name.get(our_category_name)
+                if parent_id:
+                    return parent_id
 
-    # Fallback to Uncategorized
+            # 3. Legacy: direct plaid_category column match
+            legacy_id = self._legacy_by_plaid_category.get(plaid_category_primary)
+            if legacy_id:
+                return legacy_id
+
+        # 4. Fallback to Uncategorized
+        return self._uncategorized_id
+
+
+async def _load_category_resolver(db: AsyncSession) -> _CategoryResolver:
+    """Load all system categories in one query and build the resolver."""
+    result = await db.execute(select(Category).where(Category.is_system.is_(True)))
+    return _CategoryResolver(list(result.scalars().all()))
+
+
+async def _load_account_map(db: AsyncSession, user_id: uuid.UUID) -> dict[str, uuid.UUID]:
+    """Map plaid_account_id -> our Account.id for a user, in one query."""
     result = await db.execute(
-        select(Category).where(Category.name == "Uncategorized", Category.is_system.is_(True))
-    )
-    uncat = result.scalars().first()
-    return uncat.id if uncat else None
-
-
-async def _resolve_account_id(
-    db: AsyncSession, plaid_account_id: str, user_id: uuid.UUID
-) -> uuid.UUID | None:
-    """Look up our Account by plaid_account_id."""
-    result = await db.execute(
-        select(Account).where(
-            Account.plaid_account_id == plaid_account_id,
+        select(Account.plaid_account_id, Account.id).where(
             Account.user_id == user_id,
+            Account.plaid_account_id.is_not(None),
         )
     )
-    account = result.scalar_one_or_none()
-    return account.id if account else None
+    return dict(result.all())
+
+
+async def _fetch_transactions_by_plaid_ids(
+    db: AsyncSession, user_id: uuid.UUID, plaid_txn_ids: list[str]
+) -> dict[str, Transaction]:
+    """Batch-fetch a user's transactions by plaid_txn_id in one query."""
+    if not plaid_txn_ids:
+        return {}
+    result = await db.execute(
+        select(Transaction).where(
+            Transaction.plaid_txn_id.in_(plaid_txn_ids),
+            Transaction.user_id == user_id,
+        )
+    )
+    return {txn.plaid_txn_id: txn for txn in result.scalars().all()}
+
+
+def _extract_plaid_categories(txn) -> tuple[str | None, str | None]:
+    """Extract (primary, detailed) from a Plaid transaction's personal_finance_category."""
+    if hasattr(txn, "personal_finance_category") and txn.personal_finance_category:
+        return (
+            txn.personal_finance_category.primary,
+            getattr(txn.personal_finance_category, "detailed", None),
+        )
+    return None, None
+
+
+def _parse_txn_date(raw_date) -> date_type:
+    """Plaid may return the date as a str or a date object."""
+    if isinstance(raw_date, str):
+        return date_type.fromisoformat(raw_date)
+    return raw_date
 
 
 async def sync_transactions(
@@ -378,14 +401,26 @@ async def sync_transactions(
     """Sync transactions for a PlaidItem using Plaid's /transactions/sync endpoint.
 
     Uses stored cursor for incremental sync. Returns stats dict with added/modified/removed counts.
+
+    Accounts and system categories are preloaded once per run, and per-page
+    lookups are batched, so DB round-trips scale with pages, not transactions.
     """
     client = get_plaid_client(plaid_item.environment)
     access_token = decrypt_value(plaid_item.access_token)
+
+    # Preload static lookups once per sync run (1 query each)
+    account_map = await _load_account_map(db, plaid_item.user_id)
+    category_resolver = await _load_category_resolver(db)
 
     added_count = 0
     modified_count = 0
     removed_count = 0
     cursor = plaid_item.cursor or ""
+
+    # plaid_txn_ids inserted during this run: the same transaction can appear
+    # in `added` on more than one page; without this we'd insert duplicates
+    # and hit the unique constraint on plaid_txn_id.
+    inserted_this_run: set[str] = set()
 
     has_more = True
     while has_more:
@@ -396,93 +431,75 @@ async def sync_transactions(
         PLAID_API_CALLS.inc()
         response = await asyncio.to_thread(client.transactions_sync, sync_request)
 
-        # Process added transactions
+        # Process added transactions: one existence query for the whole page
+        existing_txn_ids: set[str] = set()
+        added_txn_ids = [txn.transaction_id for txn in response.added]
+        if added_txn_ids:
+            existing_result = await db.execute(
+                select(Transaction.plaid_txn_id).where(
+                    Transaction.plaid_txn_id.in_(added_txn_ids),
+                    Transaction.user_id == plaid_item.user_id,
+                )
+            )
+            existing_txn_ids = set(existing_result.scalars().all())
+
+        new_rows: list[Transaction] = []
         for txn in response.added:
-            account_id = await _resolve_account_id(db, txn.account_id, plaid_item.user_id)
+            account_id = account_map.get(txn.account_id)
             if not account_id:
                 continue
 
-            plaid_primary = None
-            plaid_detailed = None
-            if hasattr(txn, "personal_finance_category") and txn.personal_finance_category:
-                plaid_primary = txn.personal_finance_category.primary
-                plaid_detailed = getattr(txn.personal_finance_category, "detailed", None)
-
-            category_id = await _resolve_category_id(db, plaid_primary, plaid_detailed)
-
-            # Parse date
-            txn_date = txn.date
-            if isinstance(txn_date, str):
-                txn_date = date_type.fromisoformat(txn_date)
-
-            # Upsert: check if plaid_txn_id already exists
-            existing = await db.execute(
-                select(Transaction).where(
-                    Transaction.plaid_txn_id == txn.transaction_id,
-                    Transaction.user_id == plaid_item.user_id,
-                )
-            )
-            if existing.scalar_one_or_none():
+            if txn.transaction_id in existing_txn_ids or txn.transaction_id in inserted_this_run:
                 continue  # Already exists, skip (will be handled by modified)
 
-            new_txn = Transaction(
-                user_id=plaid_item.user_id,
-                account_id=account_id,
-                plaid_txn_id=txn.transaction_id,
-                amount=txn.amount,
-                date=txn_date,
-                description=txn.name,
-                merchant_name=getattr(txn, "merchant_name", None),
-                category_id=category_id,
-                is_pending=txn.pending,
-                is_manual=False,
-            )
-            db.add(new_txn)
-            added_count += 1
-
-        # Process modified transactions
-        for txn in response.modified:
-            result = await db.execute(
-                select(Transaction).where(
-                    Transaction.plaid_txn_id == txn.transaction_id,
-                    Transaction.user_id == plaid_item.user_id,
+            plaid_primary, plaid_detailed = _extract_plaid_categories(txn)
+            new_rows.append(
+                Transaction(
+                    user_id=plaid_item.user_id,
+                    account_id=account_id,
+                    plaid_txn_id=txn.transaction_id,
+                    amount=txn.amount,
+                    date=_parse_txn_date(txn.date),
+                    description=txn.name,
+                    merchant_name=getattr(txn, "merchant_name", None),
+                    category_id=category_resolver.resolve(plaid_primary, plaid_detailed),
+                    is_pending=txn.pending,
+                    is_manual=False,
                 )
             )
-            existing_txn = result.scalar_one_or_none()
+            inserted_this_run.add(txn.transaction_id)
+            added_count += 1
+        if new_rows:
+            db.add_all(new_rows)
+
+        # Process modified transactions: batch-fetch existing rows for the page
+        modified_by_id = await _fetch_transactions_by_plaid_ids(
+            db, plaid_item.user_id, [txn.transaction_id for txn in response.modified]
+        )
+        for txn in response.modified:
+            existing_txn = modified_by_id.get(txn.transaction_id)
             if existing_txn:
                 existing_txn.amount = txn.amount
-                txn_date = txn.date
-                if isinstance(txn_date, str):
-                    txn_date = date_type.fromisoformat(txn_date)
-                existing_txn.date = txn_date
+                existing_txn.date = _parse_txn_date(txn.date)
                 existing_txn.description = txn.name
                 existing_txn.merchant_name = getattr(txn, "merchant_name", None)
                 existing_txn.is_pending = txn.pending
 
                 # Re-resolve category on modification
-                plaid_primary = None
-                plaid_detailed = None
-                if hasattr(txn, "personal_finance_category") and txn.personal_finance_category:
-                    plaid_primary = txn.personal_finance_category.primary
-                    plaid_detailed = getattr(txn.personal_finance_category, "detailed", None)
-                existing_txn.category_id = await _resolve_category_id(
-                    db, plaid_primary, plaid_detailed
+                plaid_primary, plaid_detailed = _extract_plaid_categories(txn)
+                existing_txn.category_id = category_resolver.resolve(
+                    plaid_primary, plaid_detailed
                 )
 
                 modified_count += 1
 
-        # Process removed transactions
-        for removed_txn in response.removed:
-            result = await db.execute(
-                select(Transaction).where(
-                    Transaction.plaid_txn_id == removed_txn.transaction_id,
-                    Transaction.user_id == plaid_item.user_id,
-                )
-            )
-            existing_txn = result.scalar_one_or_none()
-            if existing_txn:
-                await db.delete(existing_txn)
-                removed_count += 1
+        # Process removed transactions: batch-fetch existing rows for the page
+        removed_by_id = await _fetch_transactions_by_plaid_ids(
+            db, plaid_item.user_id, [txn.transaction_id for txn in response.removed]
+        )
+        for existing_txn in removed_by_id.values():
+            await db.delete(existing_txn)
+            removed_count += 1
 
         has_more = response.has_more
         cursor = response.next_cursor
@@ -645,10 +662,84 @@ async def _get_webhook_verification_key(key_id: str) -> dict | None:
             return None
 
 
+# Skip webhook-triggered syncs when another sync for the same item started
+# recently. Plaid retries can overlap now that the sync runs in the background.
+WEBHOOK_SYNC_REENTRY_WINDOW = timedelta(seconds=60)
+
+
+def _synced_within(plaid_item: PlaidItem, window: timedelta) -> bool:
+    """True if the item's last sync started within the given window."""
+    if plaid_item.last_synced_at is None:
+        return False
+    last_synced = plaid_item.last_synced_at
+    if last_synced.tzinfo is None:
+        last_synced = last_synced.replace(tzinfo=UTC)
+    return datetime.now(UTC) - last_synced < window
+
+
+async def run_webhook_sync(plaid_item_id: uuid.UUID) -> None:
+    """Background task: run the full sync chain for a Plaid item.
+
+    Runs after the webhook response has been sent, so it must open its own
+    DB session — the request-scoped session is closed by the time it runs.
+    """
+    from src.core.database import async_session_factory
+
+    async with async_session_factory() as db:
+        result = await db.execute(select(PlaidItem).where(PlaidItem.id == plaid_item_id))
+        plaid_item = result.scalar_one_or_none()
+        if not plaid_item or plaid_item.status != "active":
+            return
+
+        # Re-check the reentrancy guard with fresh data: another webhook's
+        # background task may have started a sync since this one was enqueued.
+        if _synced_within(plaid_item, WEBHOOK_SYNC_REENTRY_WINDOW):
+            logger.info(
+                "Skipping webhook sync for item %s: a sync ran recently", plaid_item.item_id
+            )
+            return
+
+        # Claim the item before the long sync so overlapping retries are skipped.
+        previous_synced_at = plaid_item.last_synced_at
+        plaid_item.last_synced_at = datetime.now(UTC)
+        await db.commit()
+
+        try:
+            sync_result = await sync_transactions(db, plaid_item)
+        except Exception:
+            logger.exception("Webhook sync failed for item %s", plaid_item.item_id)
+            await db.rollback()
+            # Restore the previous marker so the fallback job still picks the item up
+            plaid_item.last_synced_at = previous_synced_at
+            await db.commit()
+            return
+
+        logger.info("Sync complete for item %s: %s", plaid_item.item_id, sync_result)
+
+        try:
+            if await has_credit_accounts(db, plaid_item):
+                await sync_liabilities(db, plaid_item)
+
+            from src.jobs.budget_alerts import check_budget_alerts
+
+            await check_budget_alerts(db, user_id=plaid_item.user_id)
+        except Exception:
+            logger.exception("Post-sync tasks failed for item %s", plaid_item.item_id)
+
+
 async def handle_webhook_event(
-    db: AsyncSession, webhook_type: str, webhook_code: str, item_id: str
+    db: AsyncSession,
+    background_tasks: BackgroundTasks,
+    webhook_type: str,
+    webhook_code: str,
+    item_id: str,
 ) -> None:
-    """Process a Plaid webhook event."""
+    """Process a Plaid webhook event.
+
+    Only cheap validation and the PlaidItem lookup run in the request path;
+    the sync chain (transactions -> liabilities -> budget alerts) is enqueued
+    as a background task so the webhook can be acknowledged immediately.
+    """
     logger.info("Webhook received: type=%s code=%s item_id=%s", webhook_type, webhook_code, item_id)
 
     # All transaction webhook codes that should trigger a sync
@@ -665,15 +756,12 @@ async def handle_webhook_event(
         )
         plaid_item = result.scalar_one_or_none()
         if plaid_item and plaid_item.status == "active":
-            sync_result = await sync_transactions(db, plaid_item)
-            logger.info("Sync complete for item %s: %s", item_id, sync_result)
-
-            if await has_credit_accounts(db, plaid_item):
-                await sync_liabilities(db, plaid_item)
-
-            from src.jobs.budget_alerts import check_budget_alerts
-
-            await check_budget_alerts(db, user_id=plaid_item.user_id)
+            if _synced_within(plaid_item, WEBHOOK_SYNC_REENTRY_WINDOW):
+                logger.info(
+                    "Skipping webhook sync for item %s: a sync ran recently", item_id
+                )
+                return
+            background_tasks.add_task(run_webhook_sync, plaid_item.id)
         else:
             logger.warning("Webhook for unknown/inactive item: %s", item_id)
 
