@@ -19,8 +19,8 @@ The name plays on "finances" with an embedded **NaN** (Not a Number) — because
 |-------|-----------|
 | Backend | Python, FastAPI, SQLAlchemy, Alembic |
 | Database | PostgreSQL |
-| Web | Next.js 15 (React 19), TypeScript |
-| Mobile | React Native (Expo SDK 54) |
+| Web | Next.js 15 (React 19), TypeScript, TanStack Query |
+| Mobile | React Native (Expo SDK 54), TanStack Query |
 | Bank Data | Plaid + CSV/OFX manual import |
 | Observability | Prometheus, Grafana Cloud (Loki + Alloy) |
 | Hosting | OCI ARM VM (free tier), Docker Compose, Caddy |
