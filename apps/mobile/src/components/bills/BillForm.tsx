@@ -23,7 +23,7 @@ interface BillFormProps {
     day_of_month: number;
     is_auto_pay: boolean;
     reminder_days: number;
-  }) => void;
+  }) => Promise<void>;
 }
 
 export function BillForm({ visible, onClose, onSubmit }: BillFormProps) {
@@ -34,8 +34,19 @@ export function BillForm({ visible, onClose, onSubmit }: BillFormProps) {
   const [dayOfMonth, setDayOfMonth] = useState("1");
   const [isAutoPay, setIsAutoPay] = useState(false);
   const [reminderDays, setReminderDays] = useState("3");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  function handleSubmit() {
+  function handleClose() {
+    // Android back / iOS swipe-dismiss can fire while a submit is in flight;
+    // closing then would leave a stale error on the next open.
+    if (submitting) return;
+    setError(null);
+    onClose();
+  }
+
+  async function handleSubmit() {
+    if (submitting) return;
     if (!name || !amount) {
       Alert.alert("Error", "Please fill in name and amount");
       return;
@@ -45,21 +56,29 @@ export function BillForm({ visible, onClose, onSubmit }: BillFormProps) {
       Alert.alert("Error", "Please enter a valid amount");
       return;
     }
-    onSubmit({
-      name,
-      amount: numAmount,
-      frequency,
-      day_of_month: parseInt(dayOfMonth) || 1,
-      is_auto_pay: isAutoPay,
-      reminder_days: parseInt(reminderDays) || 3,
-    });
-    setName("");
-    setAmount("");
-    setFrequency("monthly");
-    setDayOfMonth("1");
-    setIsAutoPay(false);
-    setReminderDays("3");
-    onClose();
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onSubmit({
+        name,
+        amount: numAmount,
+        frequency,
+        day_of_month: parseInt(dayOfMonth) || 1,
+        is_auto_pay: isAutoPay,
+        reminder_days: parseInt(reminderDays) || 3,
+      });
+      setName("");
+      setAmount("");
+      setFrequency("monthly");
+      setDayOfMonth("1");
+      setIsAutoPay(false);
+      setReminderDays("3");
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save bill");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -67,7 +86,7 @@ export function BillForm({ visible, onClose, onSubmit }: BillFormProps) {
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
-      onRequestClose={onClose}
+      onRequestClose={handleClose}
     >
       <View
         style={[styles.container, { backgroundColor: theme.colors.background }]}
@@ -75,7 +94,7 @@ export function BillForm({ visible, onClose, onSubmit }: BillFormProps) {
         <View
           style={[styles.header, { borderBottomColor: theme.colors.border }]}
         >
-          <TouchableOpacity onPress={onClose}>
+          <TouchableOpacity onPress={handleClose} disabled={submitting}>
             <Text style={[styles.cancel, { color: theme.colors.primary }]}>
               Cancel
             </Text>
@@ -83,14 +102,28 @@ export function BillForm({ visible, onClose, onSubmit }: BillFormProps) {
           <Text style={[styles.title, { color: theme.colors.text }]}>
             New Bill
           </Text>
-          <TouchableOpacity onPress={handleSubmit}>
-            <Text style={[styles.save, { color: theme.colors.primary }]}>
-              Save
+          <TouchableOpacity onPress={handleSubmit} disabled={submitting}>
+            <Text
+              style={[
+                styles.save,
+                {
+                  color: submitting
+                    ? theme.colors.textSecondary
+                    : theme.colors.primary,
+                },
+              ]}
+            >
+              {submitting ? "Saving…" : "Save"}
             </Text>
           </TouchableOpacity>
         </View>
 
         <ScrollView style={styles.body}>
+          {error ? (
+            <Text style={[styles.error, { color: theme.colors.error }]}>
+              {error}
+            </Text>
+          ) : null}
           <View style={styles.field}>
             <Text style={[styles.label, { color: theme.colors.text }]}>
               Bill Name
@@ -240,6 +273,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 17, fontWeight: "600" },
   save: { fontSize: 16, fontWeight: "600" },
   body: { flex: 1, padding: 16 },
+  error: { fontSize: 14, marginBottom: 12 },
   field: { marginBottom: 20 },
   label: { fontSize: 14, fontWeight: "500", marginBottom: 6 },
   input: {

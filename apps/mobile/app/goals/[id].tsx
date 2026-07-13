@@ -1,7 +1,16 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, ScrollView, Pressable, StyleSheet, TextInput } from "react-native";
+import {
+  View,
+  Text,
+  ScrollView,
+  Pressable,
+  StyleSheet,
+  TextInput,
+  Alert,
+  ActivityIndicator,
+} from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import ConfettiCannon from "react-native-confetti-cannon";
 import { apiFetch } from "@/src/lib/api-client";
 import { useTheme } from "@/src/providers/ThemeProvider";
@@ -18,6 +27,7 @@ declare const global: { __FYNANS_E2E?: boolean };
 export default function GoalDetailScreen() {
   const { theme } = useTheme();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [contribDate, setContribDate] = useState(new Date().toISOString().slice(0, 10));
   const [contribAmount, setContribAmount] = useState("");
@@ -28,6 +38,51 @@ export default function GoalDetailScreen() {
     queryFn: () => apiFetch<GoalDetail>(`/api/goals/${id}`),
   });
   useRefreshOnFocus(refetch);
+
+  function invalidateGoalQueries() {
+    queryClient.invalidateQueries({ queryKey: ["goals"] });
+    queryClient.invalidateQueries({ queryKey: ["goals", id] });
+    queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+  }
+
+  const addContribution = useMutation({
+    mutationFn: () =>
+      apiFetch(`/api/goals/${id}/contributions`, {
+        method: "POST",
+        body: JSON.stringify({ contribution_date: contribDate, amount: contribAmount }),
+      }),
+    onSuccess: () => {
+      setContribAmount("");
+      invalidateGoalQueries();
+    },
+    onError: (err) =>
+      Alert.alert("Error", err instanceof Error ? err.message : "Failed to add contribution"),
+  });
+
+  const deleteContribution = useMutation({
+    mutationFn: (cid: string) =>
+      apiFetch(`/api/goals/${id}/contributions/${cid}`, { method: "DELETE" }),
+    onSuccess: () => invalidateGoalQueries(),
+    onError: (err) =>
+      Alert.alert("Error", err instanceof Error ? err.message : "Failed to delete contribution"),
+  });
+
+  const acknowledge = useMutation({
+    mutationFn: () => apiFetch(`/api/goals/${id}/acknowledge`, { method: "POST" }),
+    onSuccess: () => invalidateGoalQueries(),
+    onError: (err) =>
+      Alert.alert("Error", err instanceof Error ? err.message : "Failed to acknowledge goal"),
+  });
+
+  const archive = useMutation({
+    mutationFn: () => apiFetch(`/api/goals/${id}/archive`, { method: "POST" }),
+    onSuccess: () => {
+      invalidateGoalQueries();
+      router.back();
+    },
+    onError: (err) =>
+      Alert.alert("Error", err instanceof Error ? err.message : "Failed to archive goal"),
+  });
 
   useEffect(() => {
     if (!goal) return;
@@ -56,29 +111,26 @@ export default function GoalDetailScreen() {
   const isCelebration = goal.status === "completed" && goal.celebrated_at === null;
   const canAddContributions = goal.linked_account === null && goal.status === "active";
 
-  async function addContribution() {
-    if (!contribAmount) return;
-    await apiFetch(`/api/goals/${goal!.id}/contributions`, {
-      method: "POST",
-      body: JSON.stringify({ contribution_date: contribDate, amount: contribAmount }),
-    });
-    setContribAmount("");
-    await refetch();
+  function confirmDeleteContribution(cid: string) {
+    Alert.alert("Delete contribution?", "This cannot be undone.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => deleteContribution.mutate(cid),
+      },
+    ]);
   }
 
-  async function delContribution(cid: string) {
-    await apiFetch(`/api/goals/${goal!.id}/contributions/${cid}`, { method: "DELETE" });
-    await refetch();
-  }
-
-  async function acknowledge() {
-    await apiFetch(`/api/goals/${goal!.id}/acknowledge`, { method: "POST" });
-    await refetch();
-  }
-
-  async function archive() {
-    await apiFetch(`/api/goals/${goal!.id}/archive`, { method: "POST" });
-    router.back();
+  function confirmArchive() {
+    Alert.alert("Archive goal?", "The goal will no longer appear in your active goals.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Archive",
+        style: "destructive",
+        onPress: () => archive.mutate(),
+      },
+    ]);
   }
 
   return (
@@ -113,8 +165,12 @@ export default function GoalDetailScreen() {
           <View style={{ marginTop: 16, padding: 14, backgroundColor: "#FEF3C7", borderRadius: 10 }}>
             <Text style={{ fontWeight: "700", color: "#92400E" }}>🎉 Goal reached!</Text>
             <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
-              <Pressable onPress={acknowledge} style={[styles.btn, { backgroundColor: "#F59E0B" }]}>
-                <Text style={{ color: "#FFF" }}>Acknowledge</Text>
+              <Pressable
+                onPress={() => acknowledge.mutate()}
+                disabled={acknowledge.isPending}
+                style={[styles.btn, { backgroundColor: "#F59E0B", opacity: acknowledge.isPending ? 0.6 : 1 }]}
+              >
+                <Text style={{ color: "#FFF" }}>{acknowledge.isPending ? "Acknowledging…" : "Acknowledge"}</Text>
               </Pressable>
               <Pressable onPress={() => router.push(`/goals/${goal.id}/reopen`)} style={[styles.btn, { borderWidth: 1, borderColor: theme.colors.border }]}>
                 <Text style={{ color: theme.colors.text }}>Raise Target</Text>
@@ -128,8 +184,12 @@ export default function GoalDetailScreen() {
             <Text style={{ color: theme.colors.text }}>Edit</Text>
           </Pressable>
           {goal.status === "active" && (
-            <Pressable onPress={archive} style={[styles.btn, { borderWidth: 1, borderColor: theme.colors.border }]}>
-              <Text style={{ color: theme.colors.text }}>Archive</Text>
+            <Pressable
+              onPress={confirmArchive}
+              disabled={archive.isPending}
+              style={[styles.btn, { borderWidth: 1, borderColor: theme.colors.border, opacity: archive.isPending ? 0.6 : 1 }]}
+            >
+              <Text style={{ color: theme.colors.text }}>{archive.isPending ? "Archiving…" : "Archive"}</Text>
             </Pressable>
           )}
         </View>
@@ -150,8 +210,19 @@ export default function GoalDetailScreen() {
                 keyboardType="decimal-pad"
                 style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.text, flex: 1 }]}
               />
-              <Pressable onPress={addContribution} style={[styles.btn, { backgroundColor: theme.colors.primary }]}>
-                <Text style={{ color: "#FFF" }}>Add</Text>
+              <Pressable
+                onPress={() => {
+                  if (!contribAmount || addContribution.isPending) return;
+                  addContribution.mutate();
+                }}
+                disabled={addContribution.isPending}
+                style={[styles.btn, { backgroundColor: theme.colors.primary, opacity: addContribution.isPending ? 0.6 : 1 }]}
+              >
+                {addContribution.isPending ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <Text style={{ color: "#FFF" }}>Add</Text>
+                )}
               </Pressable>
             </View>
             {goal.contributions.length === 0 ? (
@@ -163,8 +234,13 @@ export default function GoalDetailScreen() {
                     <Text style={{ color: theme.colors.text, fontWeight: "500" }}>${Number(c.amount).toFixed(2)}</Text>
                     <Text style={{ color: theme.colors.textSecondary, fontSize: 12 }}>{c.contribution_date}{c.note ? ` · ${c.note}` : ""}</Text>
                   </View>
-                  <Pressable onPress={() => delContribution(c.id)}>
-                    <Text style={{ color: theme.colors.error }}>Delete</Text>
+                  <Pressable
+                    onPress={() => confirmDeleteContribution(c.id)}
+                    disabled={deleteContribution.isPending}
+                  >
+                    <Text style={{ color: theme.colors.error, opacity: deleteContribution.isPending ? 0.6 : 1 }}>
+                      Delete
+                    </Text>
                   </Pressable>
                 </View>
               ))

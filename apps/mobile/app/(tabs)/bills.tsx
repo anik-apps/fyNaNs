@@ -8,7 +8,7 @@ import {
   StyleSheet,
 } from "react-native";
 import { Plus, Receipt } from "lucide-react-native";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BillCard } from "@/src/components/bills/BillCard";
 import { BillForm } from "@/src/components/bills/BillForm";
 import { EmptyState } from "@/src/components/shared/EmptyState";
@@ -20,6 +20,7 @@ import { CardSkeleton } from "@/src/components/shared/LoadingSkeleton";
 
 export default function BillsScreen() {
   const { theme } = useTheme();
+  const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [filter, setFilter] = useState<"all" | "upcoming">("all");
@@ -36,17 +37,20 @@ export default function BillsScreen() {
     setRefreshing(false);
   }, [refetch]);
 
-  async function handleCreateBill(billData: any) {
-    try {
-      await apiFetch("/api/bills", {
+  const createBill = useMutation({
+    mutationFn: (billData: any) =>
+      apiFetch("/api/bills", {
         method: "POST",
         body: JSON.stringify(billData),
-      });
-      refetch();
-    } catch {
-      // Error handled by the form
-    }
-  }
+      }),
+    // Return the promise so mutateAsync (and the form's pending state)
+    // resolves only after the lists have refreshed.
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["bills"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      ]),
+  });
 
   const filteredBills =
     filter === "upcoming"
@@ -167,7 +171,9 @@ export default function BillsScreen() {
       <BillForm
         visible={showForm}
         onClose={() => setShowForm(false)}
-        onSubmit={handleCreateBill}
+        onSubmit={async (billData) => {
+          await createBill.mutateAsync(billData);
+        }}
       />
     </View>
   );
