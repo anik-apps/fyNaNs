@@ -4,7 +4,7 @@ FROM node:20-alpine AS deps
 WORKDIR /app
 
 # Install pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@10.16.1 --activate
 
 # Copy workspace root files + .npmrc for hoisted node_modules
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc* ./
@@ -20,7 +20,7 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@10.16.1 --activate
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
