@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BillList } from "@/components/bills/bill-list";
 import { BudgetList } from "@/components/budgets/budget-list";
 import { TransactionList } from "@/components/transactions/transaction-list";
+import { NotificationList } from "@/components/notifications/notification-list";
 import { apiFetch } from "@/lib/api-client";
 
 vi.mock("@/lib/api-client", () => ({
@@ -164,13 +165,53 @@ describe("TransactionList", () => {
     );
   });
 
-  it("renders an error box on fetch failure", async () => {
+  it("renders an error box with retry on fetch failure", async () => {
     mockApiFetch.mockRejectedValue(new Error("Network down"));
     render(<TransactionList {...baseProps} />, { wrapper: createWrapper() });
 
     expect(await screen.findByText("Network down")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
     expect(
       screen.queryByText(/no transactions found/i)
     ).not.toBeInTheDocument();
+  });
+
+  it("keeps loaded pages visible when loading the next page fails", async () => {
+    mockApiFetch
+      .mockResolvedValueOnce({
+        items: [txn("t1", "Coffee Shop")],
+        next_cursor: "cursor-1",
+      })
+      .mockRejectedValueOnce(new Error("Network down"));
+    render(<TransactionList {...baseProps} />, { wrapper: createWrapper() });
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /load more/i }));
+
+    // The loaded list survives, with an inline banner for the failed page
+    expect(
+      await screen.findByText(/failed to load more transactions/i)
+    ).toBeInTheDocument();
+    expect(screen.getByText("Coffee Shop")).toBeInTheDocument();
+
+    // Retry re-fires the page fetch and appends on success
+    mockApiFetch.mockResolvedValueOnce({
+      items: [txn("t2", "Grocery Store")],
+      next_cursor: null,
+    });
+    await user.click(screen.getByRole("button", { name: /retry/i }));
+    expect(await screen.findByText("Grocery Store")).toBeInTheDocument();
+    expect(screen.getByText("Coffee Shop")).toBeInTheDocument();
+  });
+});
+
+describe("NotificationList", () => {
+  it("renders an error box with retry on fetch failure, not the empty state", async () => {
+    mockApiFetch.mockRejectedValue(new Error("Server error"));
+    render(<NotificationList />, { wrapper: createWrapper() });
+
+    expect(await screen.findByText("Server error")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+    expect(screen.queryByText(/no notifications/i)).not.toBeInTheDocument();
   });
 });

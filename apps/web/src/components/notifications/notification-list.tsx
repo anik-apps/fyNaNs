@@ -43,11 +43,23 @@ function markPagesRead(
   ids: "all" | string
 ): NotificationCache | undefined {
   if (!cache) return cache;
+  // The badge count derives from the first page's unread_count, so a single
+  // mark-read must decrement it — but only if the target was actually unread.
+  const wasUnread =
+    ids !== "all" &&
+    cache.pages.some((page) =>
+      page.items.some((n) => n.id === ids && !n.is_read)
+    );
   return {
     ...cache,
-    pages: cache.pages.map((page) => ({
+    pages: cache.pages.map((page, pageIndex) => ({
       ...page,
-      unread_count: ids === "all" ? 0 : page.unread_count,
+      unread_count:
+        ids === "all"
+          ? 0
+          : pageIndex === 0 && wasUnread
+            ? Math.max(0, page.unread_count - 1)
+            : page.unread_count,
       items: page.items.map((n) =>
         ids === "all" || n.id === ids ? { ...n, is_read: true } : n
       ),
@@ -62,6 +74,9 @@ export function NotificationList({
   const {
     data,
     isPending,
+    isError,
+    error,
+    refetch,
     hasNextPage,
     isFetchingNextPage,
     fetchNextPage,
@@ -111,6 +126,21 @@ export function NotificationList({
         {Array.from({ length: 5 }).map((_, i) => (
           <Skeleton key={i} className="h-20" />
         ))}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="p-4 text-sm text-destructive bg-destructive/10 rounded-md flex items-center justify-between gap-4">
+        <span>
+          {error instanceof Error
+            ? error.message
+            : "Failed to load notifications"}
+        </span>
+        <Button variant="outline" size="sm" onClick={() => refetch()}>
+          Retry
+        </Button>
       </div>
     );
   }

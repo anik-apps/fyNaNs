@@ -97,6 +97,8 @@ export function TransactionList({
     isPending,
     isError,
     error,
+    isFetchNextPageError,
+    refetch,
     isPlaceholderData,
     hasNextPage,
     isFetchingNextPage,
@@ -135,10 +137,19 @@ export function TransactionList({
     );
   }
 
-  if (isError) {
+  // Only blank the screen when we have nothing to show; a failed page fetch
+  // or background refetch must not wipe out already-loaded transactions.
+  if (isError && !data) {
     return (
-      <div className="p-4 text-sm text-destructive bg-destructive/10 rounded-md">
-        {error instanceof Error ? error.message : "Failed to load transactions"}
+      <div className="p-4 text-sm text-destructive bg-destructive/10 rounded-md flex items-center justify-between gap-4">
+        <span>
+          {error instanceof Error
+            ? error.message
+            : "Failed to load transactions"}
+        </span>
+        <Button variant="outline" size="sm" onClick={() => refetch()}>
+          Retry
+        </Button>
       </div>
     );
   }
@@ -182,6 +193,26 @@ export function TransactionList({
           </div>
         </div>
       ))}
+      {isError && (
+        <div className="mt-4 p-3 text-sm text-destructive bg-destructive/10 rounded-md flex items-center justify-between gap-4">
+          <span>
+            {isFetchNextPageError
+              ? "Failed to load more transactions"
+              : error instanceof Error
+                ? error.message
+                : "Failed to refresh transactions"}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              isFetchNextPageError ? fetchNextPage() : refetch()
+            }
+          >
+            Retry
+          </Button>
+        </div>
+      )}
       {hasNextPage && (
         <div className="mt-4 text-center">
           <Button

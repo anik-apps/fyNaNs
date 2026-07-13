@@ -67,9 +67,13 @@ export default function TransactionsPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Transactions</h1>
         <ImportDialog
-          onImported={() =>
-            queryClient.invalidateQueries({ queryKey: ["transactions"] })
-          }
+          onImported={() => {
+            // Imported transactions also move budget progress and dashboard
+            // aggregates.
+            queryClient.invalidateQueries({ queryKey: ["transactions"] });
+            queryClient.invalidateQueries({ queryKey: ["budgets"] });
+            queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+          }}
         />
       </div>
       {filterError && (

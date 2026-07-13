@@ -31,7 +31,14 @@ export default function AccountsPage() {
       setSyncResult(
         `Synced ${result.items_synced} bank(s): ${result.added} new, ${result.modified} updated, ${result.removed} removed`
       );
+      // A sync changes far more than account balances — refresh everything
+      // derived from transactions as well.
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["budgets"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["net-worth-history"] });
+      queryClient.invalidateQueries({ queryKey: ["spending-history"] });
     } catch {
       setSyncResult("Sync failed");
     } finally {
