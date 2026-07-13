@@ -436,3 +436,110 @@ async def test_error_status_items_skip_sync(db_session: AsyncSession):
     await db_session.commit()
 
     assert should_sync_item(error_item) is False
+
+
+# --- Per-item sync lock (run_locked_sync) ---
+
+
+@pytest.mark.asyncio
+async def test_run_locked_sync_coalesces_overlapping_calls():
+    """Overlapping calls coalesce into ONE extra pass run by the lock holder."""
+    import asyncio
+
+    from src.services.plaid import run_locked_sync
+
+    item_id = uuid.uuid4()
+    passes: list[int] = []
+    first_pass_started = asyncio.Event()
+    release_first_pass = asyncio.Event()
+
+    async def sync_once():
+        passes.append(len(passes) + 1)
+        if len(passes) == 1:
+            first_pass_started.set()
+            await release_first_pass.wait()
+
+    first = asyncio.create_task(run_locked_sync(item_id, sync_once))
+    await asyncio.wait_for(first_pass_started.wait(), timeout=5)
+
+    # While the first sync is mid-pass, overlapping calls are coalesced:
+    # they return False without running a pass themselves.
+    assert await run_locked_sync(item_id, sync_once) is False
+    assert await run_locked_sync(item_id, sync_once) is False
+    assert len(passes) == 1
+
+    release_first_pass.set()
+    assert await asyncio.wait_for(first, timeout=5) is True
+
+    # The lock holder ran its own pass plus exactly ONE coalesced extra
+    # pass for both overlapping requests.
+    assert len(passes) == 2
+
+    # The lock is released afterwards: a fresh call runs normally.
+    assert await run_locked_sync(item_id, sync_once) is True
+    assert len(passes) == 3
+
+
+@pytest.mark.asyncio
+async def test_run_locked_sync_releases_lock_after_failure():
+    """A failed sync must release the lock so later syncs can run."""
+    from src.services.plaid import _syncing_items, run_locked_sync
+
+    item_id = uuid.uuid4()
+
+    async def failing_sync():
+        raise RuntimeError("sync failed")
+
+    with pytest.raises(RuntimeError, match="sync failed"):
+        await run_locked_sync(item_id, failing_sync)
+
+    assert item_id not in _syncing_items
+
+    ran: list[bool] = []
+
+    async def ok_sync():
+        ran.append(True)
+
+    assert await run_locked_sync(item_id, ok_sync) is True
+    assert ran == [True]
+
+
+@pytest.mark.asyncio
+async def test_webhook_sync_retries_once_then_gives_up():
+    """A failed webhook sync retries exactly once, then only logs (no raise)."""
+    from src.services import plaid as plaid_service
+
+    calls: list[uuid.UUID] = []
+
+    async def failing_pass(item_id):
+        calls.append(item_id)
+        raise RuntimeError("plaid down")
+
+    with (
+        patch.object(plaid_service, "WEBHOOK_SYNC_RETRY_DELAY_SECONDS", 0),
+        patch.object(plaid_service, "_webhook_sync_pass", failing_pass),
+    ):
+        # Must not raise: final failure is logged and left to the fallback job.
+        await plaid_service._webhook_sync_with_retry(uuid.uuid4())
+
+    assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_webhook_sync_retry_succeeds_after_transient_failure():
+    from src.services import plaid as plaid_service
+
+    attempts: list[uuid.UUID] = []
+
+    async def flaky_pass(item_id):
+        attempts.append(item_id)
+        if len(attempts) == 1:
+            raise RuntimeError("transient failure")
+
+    with (
+        patch.object(plaid_service, "WEBHOOK_SYNC_RETRY_DELAY_SECONDS", 0),
+        patch.object(plaid_service, "_webhook_sync_pass", flaky_pass),
+    ):
+        await plaid_service._webhook_sync_with_retry(uuid.uuid4())
+
+    assert len(attempts) == 2

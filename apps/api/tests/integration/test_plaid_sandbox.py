@@ -289,9 +289,10 @@ class TestPlaidSandboxWebhook:
         """SYNC_UPDATES_AVAILABLE must be acknowledged immediately.
 
         The sync chain runs as a background task, so the response returns
-        quickly and transaction effects show up eventually. If a sync ran
-        within the last 60s (e.g. the previous test), the reentrancy guard
-        skips re-syncing — the ack must still be fast and effects visible.
+        quickly and transaction effects show up eventually. If another sync
+        for the item is running (e.g. from the previous test), the in-process
+        lock coalesces this one into a single extra pass — the ack must
+        still be fast and effects visible.
         """
         item_id = _get_plaid_external_item_id(str(exchanged_item["plaid_item_id"]))
         payload = {

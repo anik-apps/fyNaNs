@@ -497,8 +497,12 @@ async def sync_transactions(
         removed_by_id = await _fetch_transactions_by_plaid_ids(
             db, plaid_item.user_id, [txn.transaction_id for txn in response.removed]
         )
-        for existing_txn in removed_by_id.values():
+        for txn_id, existing_txn in removed_by_id.items():
             await db.delete(existing_txn)
+            # Forget the id if it was inserted earlier in this run, so an
+            # add -> remove -> re-add sequence within one run re-inserts the
+            # transaction instead of silently dropping it.
+            inserted_this_run.discard(txn_id)
             removed_count += 1
 
         has_more = response.has_more
@@ -662,23 +666,49 @@ async def _get_webhook_verification_key(key_id: str) -> dict | None:
             return None
 
 
-# Skip webhook-triggered syncs when another sync for the same item started
-# recently. Plaid retries can overlap now that the sync runs in the background.
-WEBHOOK_SYNC_REENTRY_WINDOW = timedelta(seconds=60)
+# --- Per-item sync lock (in-process) ---
+
+# The API runs as a single uvicorn worker process, so in-process asyncio
+# state is authoritative. The membership checks and set mutations below run
+# with no awaits in between, which makes them atomic on the single event loop.
+_syncing_items: set[uuid.UUID] = set()
+_resync_requested: set[uuid.UUID] = set()
+
+# Delay (seconds) before the single retry of a failed webhook-triggered sync.
+WEBHOOK_SYNC_RETRY_DELAY_SECONDS = 30
 
 
-def _synced_within(plaid_item: PlaidItem, window: timedelta) -> bool:
-    """True if the item's last sync started within the given window."""
-    if plaid_item.last_synced_at is None:
+async def run_locked_sync(item_id: uuid.UUID, sync_once) -> bool:
+    """Run one sync pass for an item under the per-item in-process lock.
+
+    ``sync_once`` is a zero-argument callable returning an awaitable that
+    performs one full sync pass.
+
+    If a sync for the item is already running, the request is coalesced
+    rather than dropped: the lock holder runs ONE extra pass after its own,
+    and this call returns False without syncing. Otherwise runs ``sync_once``
+    (plus at most one coalesced extra pass) and returns True.
+    """
+    if item_id in _syncing_items:
+        _resync_requested.add(item_id)
+        logger.info("Sync already running for item %s: coalescing request", item_id)
         return False
-    last_synced = plaid_item.last_synced_at
-    if last_synced.tzinfo is None:
-        last_synced = last_synced.replace(tzinfo=UTC)
-    return datetime.now(UTC) - last_synced < window
+
+    _syncing_items.add(item_id)
+    try:
+        await sync_once()
+        # A request arrived while the pass above was running: honor it with
+        # one extra pass, still under the lock so nothing overlaps.
+        if item_id in _resync_requested:
+            _resync_requested.discard(item_id)
+            await sync_once()
+    finally:
+        _syncing_items.discard(item_id)
+    return True
 
 
-async def run_webhook_sync(plaid_item_id: uuid.UUID) -> None:
-    """Background task: run the full sync chain for a Plaid item.
+async def _webhook_sync_pass(plaid_item_id: uuid.UUID) -> None:
+    """One pass of the webhook sync chain, with its own DB session.
 
     Runs after the webhook response has been sent, so it must open its own
     DB session — the request-scoped session is closed by the time it runs.
@@ -691,29 +721,7 @@ async def run_webhook_sync(plaid_item_id: uuid.UUID) -> None:
         if not plaid_item or plaid_item.status != "active":
             return
 
-        # Re-check the reentrancy guard with fresh data: another webhook's
-        # background task may have started a sync since this one was enqueued.
-        if _synced_within(plaid_item, WEBHOOK_SYNC_REENTRY_WINDOW):
-            logger.info(
-                "Skipping webhook sync for item %s: a sync ran recently", plaid_item.item_id
-            )
-            return
-
-        # Claim the item before the long sync so overlapping retries are skipped.
-        previous_synced_at = plaid_item.last_synced_at
-        plaid_item.last_synced_at = datetime.now(UTC)
-        await db.commit()
-
-        try:
-            sync_result = await sync_transactions(db, plaid_item)
-        except Exception:
-            logger.exception("Webhook sync failed for item %s", plaid_item.item_id)
-            await db.rollback()
-            # Restore the previous marker so the fallback job still picks the item up
-            plaid_item.last_synced_at = previous_synced_at
-            await db.commit()
-            return
-
+        sync_result = await sync_transactions(db, plaid_item)
         logger.info("Sync complete for item %s: %s", plaid_item.item_id, sync_result)
 
         try:
@@ -725,6 +733,44 @@ async def run_webhook_sync(plaid_item_id: uuid.UUID) -> None:
             await check_budget_alerts(db, user_id=plaid_item.user_id)
         except Exception:
             logger.exception("Post-sync tasks failed for item %s", plaid_item.item_id)
+
+
+async def _webhook_sync_with_retry(plaid_item_id: uuid.UUID) -> None:
+    """Run one webhook sync pass, retrying once after a short delay.
+
+    On final failure only log and count the failure: ``last_synced_at`` is
+    written solely on successful sync completion, so a failed item stays
+    stale and the 3-day fallback job eventually recovers it.
+    """
+    try:
+        await _webhook_sync_pass(plaid_item_id)
+        return
+    except Exception:
+        logger.exception(
+            "Webhook sync failed for item %s; retrying in %ss",
+            plaid_item_id,
+            WEBHOOK_SYNC_RETRY_DELAY_SECONDS,
+        )
+
+    await asyncio.sleep(WEBHOOK_SYNC_RETRY_DELAY_SECONDS)
+    try:
+        await _webhook_sync_pass(plaid_item_id)
+    except Exception:
+        logger.exception("Webhook sync retry failed for item %s", plaid_item_id)
+        PLAID_SYNC.labels(status="failure").inc()
+
+
+async def run_webhook_sync(plaid_item_id: uuid.UUID) -> None:
+    """Background task: run the full sync chain for a Plaid item.
+
+    Serialized per item via run_locked_sync, so overlapping webhook retries
+    coalesce into one extra pass instead of syncing concurrently.
+    """
+
+    async def sync_once() -> None:
+        await _webhook_sync_with_retry(plaid_item_id)
+
+    await run_locked_sync(plaid_item_id, sync_once)
 
 
 async def handle_webhook_event(
@@ -756,11 +802,8 @@ async def handle_webhook_event(
         )
         plaid_item = result.scalar_one_or_none()
         if plaid_item and plaid_item.status == "active":
-            if _synced_within(plaid_item, WEBHOOK_SYNC_REENTRY_WINDOW):
-                logger.info(
-                    "Skipping webhook sync for item %s: a sync ran recently", item_id
-                )
-                return
+            # Overlap protection happens in the background task itself:
+            # run_webhook_sync serializes per item and coalesces retries.
             background_tasks.add_task(run_webhook_sync, plaid_item.id)
         else:
             logger.warning("Webhook for unknown/inactive item: %s", item_id)

@@ -136,7 +136,12 @@ async def sync_plaid_item(
     db: AsyncSession = Depends(get_db),
 ):
     """Manually trigger a transaction sync for a linked Plaid item."""
-    from src.services.plaid import has_credit_accounts, sync_liabilities, sync_transactions
+    from src.services.plaid import (
+        has_credit_accounts,
+        run_locked_sync,
+        sync_liabilities,
+        sync_transactions,
+    )
 
     result = await db.execute(
         select(PlaidItem).where(
@@ -162,16 +167,26 @@ async def sync_plaid_item(
                 ),
             )
 
-    sync_result = await sync_transactions(db, plaid_item)
+    totals = {"added": 0, "modified": 0, "removed": 0}
 
-    if await has_credit_accounts(db, plaid_item):
-        await sync_liabilities(db, plaid_item)
+    async def sync_once():
+        stats = await sync_transactions(db, plaid_item)
+        for key in totals:
+            totals[key] += stats[key]
 
-    return {
-        "added": sync_result["added"],
-        "modified": sync_result["modified"],
-        "removed": sync_result["removed"],
-    }
+        if await has_credit_accounts(db, plaid_item):
+            await sync_liabilities(db, plaid_item)
+
+    # Serialize with webhook/fallback syncs for the same item. If one is
+    # already running, it picks this request up as a coalesced extra pass.
+    ran = await run_locked_sync(plaid_item.id, sync_once)
+    if not ran:
+        raise HTTPException(
+            status_code=409,
+            detail="A sync for this item is already in progress. New data will appear shortly.",
+        )
+
+    return totals
 
 
 @router.post("/sync-all")
@@ -180,7 +195,12 @@ async def sync_all_items(
     db: AsyncSession = Depends(get_db),
 ):
     """Sync all active Plaid items for the current user."""
-    from src.services.plaid import has_credit_accounts, sync_liabilities, sync_transactions
+    from src.services.plaid import (
+        has_credit_accounts,
+        run_locked_sync,
+        sync_liabilities,
+        sync_transactions,
+    )
 
     result = await db.execute(
         select(PlaidItem).where(
@@ -192,15 +212,21 @@ async def sync_all_items(
 
     total = {"added": 0, "modified": 0, "removed": 0, "items_synced": 0}
     for item in items:
-        try:
+
+        async def sync_once(item=item):
             sync_result = await sync_transactions(db, item)
             total["added"] += sync_result["added"]
             total["modified"] += sync_result["modified"]
             total["removed"] += sync_result["removed"]
-            total["items_synced"] += 1
 
             if await has_credit_accounts(db, item):
                 await sync_liabilities(db, item)
+
+        try:
+            # Items with a sync already running are coalesced into that
+            # sync's extra pass and not counted here.
+            if await run_locked_sync(item.id, sync_once):
+                total["items_synced"] += 1
         except Exception as e:
             logger.warning("Sync failed for item %s: %s", item.id, e)
             continue
