@@ -43,5 +43,7 @@ PLAID_API_CALLS = Counter("plaid_api_calls_total", "Total Plaid API calls made")
 
 TRANSACTIONS = Counter("transactions_total", "Total transactions created", ["source"])
 
+EXPORTS = Counter("exports_total", "User data exports", ["status"])
+
 BUDGETS_CREATED = Counter("budgets_created_total", "Total budgets created")
 BILLS_CREATED = Counter("bills_created_total", "Total bills created")

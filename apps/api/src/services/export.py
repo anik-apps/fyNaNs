@@ -1,4 +1,3 @@
-import asyncio
 import io
 import json
 import uuid
@@ -25,7 +24,7 @@ class DateTimeEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-def _build_and_send_export(export_data: dict, to_email: str) -> None:
+def build_and_send_export(export_data: dict, to_email: str) -> None:
     """Build the export ZIP and send it. Fully sync; run via asyncio.to_thread.
 
     json.dumps + zipfile compression are CPU-bound and send_export_email makes
@@ -42,10 +41,13 @@ def _build_and_send_export(export_data: dict, to_email: str) -> None:
     send_export_email(to_email, zip_buffer.getvalue())
 
 
-async def generate_export(db: AsyncSession, user: User) -> None:
-    """Generate a ZIP file of user data and send download link via email.
+async def collect_export_data(db: AsyncSession, user: User) -> dict:
+    """DB phase of an export: query all user data and return it as plain values.
 
-    Format: ZIP containing JSON files per entity.
+    Only this part needs a session. The caller should close the session
+    before handing the result to ``build_and_send_export`` (via
+    ``asyncio.to_thread``) so no pooled connection is pinned while the ZIP
+    is built and emailed.
     """
     export_data = {}
 
@@ -127,6 +129,4 @@ async def generate_export(db: AsyncSession, user: User) -> None:
         for bl in bills
     ]
 
-    # Create ZIP and email it off the event loop (export_data and the email
-    # address are plain values, so the thread function is fully sync).
-    await asyncio.to_thread(_build_and_send_export, export_data, user.email)
+    return export_data

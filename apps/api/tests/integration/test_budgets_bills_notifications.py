@@ -298,6 +298,35 @@ class TestUserExportAndDeletion:
                 break
             time.sleep(0.25)
 
+    def _register_export_user(self, client) -> dict:
+        """Register a dedicated user (the export limiter is keyed by user id)."""
+        email = f"exportrl-{uuid.uuid4().hex[:8]}@example.com"
+        password = "ExportRL123!"
+        reg = client.post("/auth/register", json={
+            "email": email, "password": password, "name": "Export RL User"
+        })
+        assert reg.status_code == 201, f"Registration failed: {reg.text}"
+        login = client.post("/auth/login", json={"email": email, "password": password})
+        assert login.status_code == 200, f"Login failed: {login.text}"
+        return {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    def test_export_rate_limited_per_user(self, client: httpx.Client):
+        headers_a = self._register_export_user(client)
+        headers_b = self._register_export_user(client)
+
+        # First export for user A is accepted
+        first = client.post("/user/export", headers=headers_a)
+        assert first.status_code == 202
+
+        # An immediate second export for the same user is rejected
+        second = client.post("/user/export", headers=headers_a)
+        assert second.status_code == 429
+        assert "export" in second.json()["detail"].lower()
+
+        # The limit is per-user: a different user can still export
+        other = client.post("/user/export", headers=headers_b)
+        assert other.status_code == 202
+
     def test_delete_account_cascades_all_data(self, client: httpx.Client):
         headers, email = self._create_user_with_data(client)
 
