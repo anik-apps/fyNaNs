@@ -6,11 +6,12 @@ import { AuthContext } from "@/src/providers/AuthProvider";
 import { ThemeProvider } from "@/src/providers/ThemeProvider";
 
 const mockAuthenticate = jest.fn();
+let mockIsEnabled = true;
 
 jest.mock("@/src/hooks/useBiometric", () => ({
   useBiometric: () => ({
     isAvailable: true,
-    isEnabled: true,
+    isEnabled: mockIsEnabled,
     biometricType: "Face ID",
     authenticate: mockAuthenticate,
     enable: jest.fn(),
@@ -18,7 +19,7 @@ jest.mock("@/src/hooks/useBiometric", () => ({
   }),
 }));
 
-const mockLogout = jest.fn().mockResolvedValue(undefined);
+const mockLogout = jest.fn();
 
 const mockAuthValue = {
   user: {
@@ -53,18 +54,22 @@ function renderAppContent() {
   );
 }
 
-// Simulate the app being backgrounded then foregrounded, which triggers the
-// biometric lock in AppContent.
-async function goBackgroundThenForeground() {
+// Flush the cold-start lock effect and any pending unlock promise.
+async function flush() {
+  await act(async () => {});
+}
+
+async function transition(...states: AppStateStatus[]) {
   await act(async () => {
-    appStateHandler("background");
-    appStateHandler("active");
+    for (const state of states) appStateHandler(state);
   });
 }
 
 describe("AppContent biometric lock", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockIsEnabled = true;
+    mockLogout.mockResolvedValue(undefined);
     // react-native's jest mock sets currentState to a jest.fn(); the
     // component expects an AppStateStatus string.
     (AppState as { currentState: AppStateStatus }).currentState = "active";
@@ -80,52 +85,107 @@ describe("AppContent biometric lock", () => {
     jest.restoreAllMocks();
   });
 
-  it("renders children while unlocked", () => {
+  it("does not lock on cold start when biometric is disabled", async () => {
+    mockIsEnabled = false;
     const { getByText, queryByText } = renderAppContent();
-    expect(getByText("APP CONTENT")).toBeTruthy();
+    await flush();
+
+    expect(mockAuthenticate).not.toHaveBeenCalled();
     expect(queryByText("fyNaNs is locked")).toBeNull();
+    expect(getByText("APP CONTENT")).toBeTruthy();
   });
 
-  it("unlocks when the foreground biometric prompt succeeds", async () => {
-    mockAuthenticate.mockResolvedValue(true);
+  it("locks on cold start and unlocks when the biometric prompt succeeds", async () => {
+    let resolveAuth: (success: boolean) => void;
+    mockAuthenticate.mockImplementation(
+      () => new Promise<boolean>((resolve) => (resolveAuth = resolve))
+    );
     const { getByText, queryByText } = renderAppContent();
+    await flush();
 
-    await goBackgroundThenForeground();
+    // Locked immediately on launch (no AppState transition needed); the app
+    // stays mounted underneath the overlay.
+    expect(getByText("fyNaNs is locked")).toBeTruthy();
+    expect(getByText("APP CONTENT")).toBeTruthy();
+    expect(mockAuthenticate).toHaveBeenCalledTimes(1);
+
+    await act(async () => resolveAuth!(true));
+    expect(queryByText("fyNaNs is locked")).toBeNull();
+    expect(getByText("APP CONTENT")).toBeTruthy();
+  });
+
+  it("re-locks and re-prompts when returning from the background", async () => {
+    mockAuthenticate.mockResolvedValueOnce(true); // cold-start unlock
+    const { getByText, queryByText } = renderAppContent();
+    await flush();
+    expect(queryByText("fyNaNs is locked")).toBeNull();
+
+    mockAuthenticate.mockResolvedValueOnce(false);
+    await transition("background", "active");
+
+    expect(mockAuthenticate).toHaveBeenCalledTimes(2);
+    expect(getByText("fyNaNs is locked")).toBeTruthy();
+    expect(getByText("Authentication failed — try again")).toBeTruthy();
+    // Children stay mounted (covered by the overlay) so navigation state
+    // survives the lock.
+    expect(getByText("APP CONTENT")).toBeTruthy();
+  });
+
+  it("does not re-lock on inactive→active (notification shade, Face ID sheet)", async () => {
+    mockAuthenticate.mockResolvedValueOnce(true); // cold-start unlock
+    const { queryByText } = renderAppContent();
+    await flush();
+
+    await transition("inactive", "active");
 
     expect(mockAuthenticate).toHaveBeenCalledTimes(1);
     expect(queryByText("fyNaNs is locked")).toBeNull();
-    expect(getByText("APP CONTENT")).toBeTruthy();
+  });
+
+  it("ignores AppState churn while an unlock attempt is in flight", async () => {
+    let resolveAuth: (success: boolean) => void;
+    mockAuthenticate.mockImplementation(
+      () => new Promise<boolean>((resolve) => (resolveAuth = resolve))
+    );
+    const { queryByText } = renderAppContent();
+    await flush(); // cold-start lock; prompt in flight
+
+    // The biometric sheet drives the app through background/active while
+    // authenticate() is pending; this must not trigger a second prompt.
+    await transition("inactive", "active", "background", "active");
+    expect(mockAuthenticate).toHaveBeenCalledTimes(1);
+
+    await act(async () => resolveAuth!(true));
+    expect(queryByText("fyNaNs is locked")).toBeNull();
   });
 
   it("stays locked with recovery UI when authentication fails", async () => {
     mockAuthenticate.mockResolvedValue(false);
-    const { getByText, getByTestId, queryByText } = renderAppContent();
+    const { getByText, getByTestId } = renderAppContent();
 
-    await goBackgroundThenForeground();
+    await flush();
 
     expect(getByText("fyNaNs is locked")).toBeTruthy();
     expect(getByText("Authentication failed — try again")).toBeTruthy();
     expect(getByTestId("unlock-button")).toBeTruthy();
     expect(getByText("Use password instead")).toBeTruthy();
-    expect(queryByText("APP CONTENT")).toBeNull();
   });
 
   it("stays locked with recovery UI when authentication throws", async () => {
     mockAuthenticate.mockRejectedValue(new Error("biometric error"));
-    const { getByText, queryByText } = renderAppContent();
+    const { getByText } = renderAppContent();
 
-    await goBackgroundThenForeground();
+    await flush();
 
     expect(getByText("fyNaNs is locked")).toBeTruthy();
     expect(getByText("Authentication failed — try again")).toBeTruthy();
-    expect(queryByText("APP CONTENT")).toBeNull();
   });
 
   it("retries authentication from the Unlock button and unlocks on success", async () => {
     mockAuthenticate.mockResolvedValueOnce(false);
     const { getByText, getByTestId, queryByText } = renderAppContent();
 
-    await goBackgroundThenForeground();
+    await flush();
     expect(getByText("fyNaNs is locked")).toBeTruthy();
 
     mockAuthenticate.mockResolvedValueOnce(true);
@@ -142,7 +202,7 @@ describe("AppContent biometric lock", () => {
     mockAuthenticate.mockResolvedValue(false);
     const { getByText, getByTestId } = renderAppContent();
 
-    await goBackgroundThenForeground();
+    await flush();
 
     await act(async () => {
       fireEvent.press(getByTestId("unlock-button"));
@@ -157,7 +217,7 @@ describe("AppContent biometric lock", () => {
     mockAuthenticate.mockResolvedValue(false);
     const { getByTestId, queryByText } = renderAppContent();
 
-    await goBackgroundThenForeground();
+    await flush();
 
     await act(async () => {
       fireEvent.press(getByTestId("use-password-link"));
@@ -165,5 +225,21 @@ describe("AppContent biometric lock", () => {
 
     expect(mockLogout).toHaveBeenCalledTimes(1);
     expect(queryByText("fyNaNs is locked")).toBeNull();
+  });
+
+  it("keeps the lock up when logout rejects instead of exposing the app", async () => {
+    mockAuthenticate.mockResolvedValue(false);
+    mockLogout.mockRejectedValueOnce(new Error("network down"));
+    const { getByText, getByTestId } = renderAppContent();
+
+    await flush();
+
+    await act(async () => {
+      fireEvent.press(getByTestId("use-password-link"));
+    });
+
+    expect(mockLogout).toHaveBeenCalledTimes(1);
+    expect(getByText("fyNaNs is locked")).toBeTruthy();
+    expect(getByText("Authentication failed — try again")).toBeTruthy();
   });
 });

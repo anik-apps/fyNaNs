@@ -58,7 +58,9 @@ export default function TransactionDetailScreen() {
       <View
         style={[
           styles.screen,
-          { paddingTop: 12, backgroundColor: theme.colors.background },
+          // Match the loaded header's status-bar offset so content doesn't
+          // jump when the skeleton is replaced.
+          { paddingTop: insets.top + 12, backgroundColor: theme.colors.background },
         ]}
       >
         <Stack.Screen options={{ headerShown: false }} />
