@@ -1,3 +1,4 @@
+import bisect
 import csv
 import io
 import uuid
@@ -121,30 +122,112 @@ async def list_transactions(
     return transactions, next_cursor
 
 
-async def is_duplicate_transaction(
+# --- Import Functions ---
+
+# Duplicate detection window: same (amount, description) within +/- 3 days (inclusive).
+_DUP_WINDOW = timedelta(days=3)
+
+# Sanity bounds for imported transaction dates. Rows outside this window are
+# rejected as error rows: extreme dates would overflow the +/- window arithmetic
+# and let a single outlier row widen the duplicate-detection range query to the
+# user's entire history.
+_MIN_IMPORT_DATE = date(1900, 1, 1)
+_MAX_IMPORT_DATE = date(2100, 12, 31)
+
+
+def _validate_import_row(txn_date: date, amount: Decimal) -> str | None:
+    """Return an error reason if a parsed row's date or amount is not importable."""
+    if not _MIN_IMPORT_DATE <= txn_date <= _MAX_IMPORT_DATE:
+        return (
+            f"Date out of supported range ({_MIN_IMPORT_DATE.isoformat()} to "
+            f"{_MAX_IMPORT_DATE.isoformat()}): {txn_date.isoformat()}"
+        )
+    if not amount.is_finite():
+        return f"Amount is not a finite number: {amount}"
+    return None
+
+# Index of existing transactions: (amount, description) -> sorted list of dates.
+_DuplicateIndex = dict[tuple[Decimal, str], list[date]]
+
+
+async def _load_duplicate_index(
     db: AsyncSession,
     user_id: uuid.UUID,
-    txn_date: date,
-    amount: Decimal,
-    description: str,
-) -> bool:
-    """Check for duplicate within a 3-day window by (date + amount + description)."""
-    window_start = txn_date - timedelta(days=3)
-    window_end = txn_date + timedelta(days=3)
+    dates: list[date],
+) -> _DuplicateIndex:
+    """Fetch the user's existing transactions covering all given dates (+/- window)
+    in ONE query and index them by (amount, description) -> sorted dates."""
+    index: _DuplicateIndex = {}
+    if not dates:
+        return index
 
     result = await db.execute(
-        select(Transaction).where(
+        select(Transaction.date, Transaction.amount, Transaction.description).where(
             Transaction.user_id == user_id,
-            Transaction.date >= window_start,
-            Transaction.date <= window_end,
-            Transaction.amount == amount,
-            Transaction.description == description,
+            Transaction.date >= min(dates) - _DUP_WINDOW,
+            Transaction.date <= max(dates) + _DUP_WINDOW,
         )
     )
-    return result.scalar_one_or_none() is not None
+    for txn_date, amount, description in result.all():
+        _add_to_index(index, txn_date, amount, description)
+    return index
 
 
-# --- Import Functions ---
+def _add_to_index(
+    index: _DuplicateIndex, txn_date: date, amount: Decimal, description: str
+) -> None:
+    bisect.insort(index.setdefault((amount, description), []), txn_date)
+
+
+def _is_duplicate(
+    index: _DuplicateIndex, txn_date: date, amount: Decimal, description: str
+) -> bool:
+    """Duplicate if any indexed date for (amount, description) is within +/- 3 days."""
+    dates = index.get((amount, description))
+    if not dates:
+        return False
+    pos = bisect.bisect_left(dates, txn_date - _DUP_WINDOW)
+    return pos < len(dates) and dates[pos] <= txn_date + _DUP_WINDOW
+
+
+def _insert_non_duplicates(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    account_id: uuid.UUID,
+    parsed_rows: list[dict],
+    index: _DuplicateIndex,
+    errors: list[dict],
+) -> tuple[int, int]:
+    """Add non-duplicate parsed rows to the session. Returns (imported, skipped).
+
+    Accepted rows are added to the index so duplicates later in the same file
+    are also skipped (matching the previous per-row query + autoflush behavior).
+    """
+    imported = 0
+    skipped = 0
+    for row in parsed_rows:
+        try:
+            if _is_duplicate(index, row["date"], row["amount"], row["description"]):
+                skipped += 1
+                continue
+
+            txn = Transaction(
+                user_id=user_id,
+                account_id=account_id,
+                amount=row["amount"],
+                date=row["date"],
+                description=row["description"],
+                merchant_name=row.get("merchant_name"),
+                notes=row.get("notes"),
+                is_manual=True,
+                is_pending=False,
+            )
+            db.add(txn)
+            _add_to_index(index, row["date"], row["amount"], row["description"])
+            imported += 1
+        except Exception as e:
+            errors.append({"row": row["row"], "reason": str(e)})
+    return imported, skipped
 
 
 async def import_csv(
@@ -165,9 +248,7 @@ async def import_csv(
     if not result.scalar_one_or_none():
         raise TransactionError("Account not found", 404)
 
-    imported = 0
-    skipped = 0
-    errors = []
+    errors: list[dict] = []
 
     try:
         text = file_content.decode("utf-8")
@@ -176,6 +257,8 @@ async def import_csv(
 
     reader = csv.DictReader(io.StringIO(text))
 
+    # Phase 1: parse and validate all rows
+    parsed_rows: list[dict] = []
     for row_num, row in enumerate(reader, start=1):
         try:
             # Parse date (try multiple formats)
@@ -197,27 +280,28 @@ async def import_csv(
                 errors.append({"row": row_num, "reason": f"Invalid amount: {amount_str}"})
                 continue
 
-            # Check for duplicate
-            if await is_duplicate_transaction(db, user_id, txn_date, amount, description):
-                skipped += 1
+            reason = _validate_import_row(txn_date, amount)
+            if reason:
+                errors.append({"row": row_num, "reason": reason})
                 continue
 
-            txn = Transaction(
-                user_id=user_id,
-                account_id=account_id,
-                amount=amount,
-                date=txn_date,
-                description=description,
-                merchant_name=row.get("Merchant", "").strip() or None,
-                notes=row.get("Notes", "").strip() or None,
-                is_manual=True,
-                is_pending=False,
-            )
-            db.add(txn)
-            imported += 1
+            parsed_rows.append({
+                "row": row_num,
+                "date": txn_date,
+                "amount": amount,
+                "description": description,
+                "merchant_name": row.get("Merchant", "").strip() or None,
+                "notes": row.get("Notes", "").strip() or None,
+            })
 
         except Exception as e:
             errors.append({"row": row_num, "reason": str(e)})
+
+    # Phase 2: single duplicate-detection query, then dedupe in memory
+    index = await _load_duplicate_index(db, user_id, [r["date"] for r in parsed_rows])
+    imported, skipped = _insert_non_duplicates(
+        db, user_id, account_id, parsed_rows, index, errors
+    )
 
     await db.commit()
     TRANSACTIONS.labels(source="csv").inc(imported)
@@ -240,15 +324,15 @@ async def import_ofx(
     if not result.scalar_one_or_none():
         raise TransactionError("Account not found", 404)
 
-    imported = 0
-    skipped = 0
-    errors = []
+    errors: list[dict] = []
 
     try:
         ofx = OfxParser.parse(io.BytesIO(file_content))
     except Exception as e:
         raise TransactionError(f"Failed to parse OFX file: {e}", 400) from e
 
+    # Phase 1: parse and validate all transactions
+    parsed_rows: list[dict] = []
     for account_data in ofx.accounts:
         for row_num, txn_data in enumerate(account_data.statement.transactions, start=1):
             try:
@@ -256,25 +340,27 @@ async def import_ofx(
                 amount = Decimal(str(txn_data.amount))
                 description = txn_data.memo or txn_data.payee or "Unknown"
 
-                if await is_duplicate_transaction(db, user_id, txn_date, amount, description):
-                    skipped += 1
+                reason = _validate_import_row(txn_date, amount)
+                if reason:
+                    errors.append({"row": row_num, "reason": reason})
                     continue
 
-                txn = Transaction(
-                    user_id=user_id,
-                    account_id=account_id,
-                    amount=amount,
-                    date=txn_date,
-                    description=description,
-                    merchant_name=txn_data.payee if txn_data.payee != description else None,
-                    is_manual=True,
-                    is_pending=False,
-                )
-                db.add(txn)
-                imported += 1
+                parsed_rows.append({
+                    "row": row_num,
+                    "date": txn_date,
+                    "amount": amount,
+                    "description": description,
+                    "merchant_name": txn_data.payee if txn_data.payee != description else None,
+                })
 
             except Exception as e:
                 errors.append({"row": row_num, "reason": str(e)})
+
+    # Phase 2: single duplicate-detection query, then dedupe in memory
+    index = await _load_duplicate_index(db, user_id, [r["date"] for r in parsed_rows])
+    imported, skipped = _insert_non_duplicates(
+        db, user_id, account_id, parsed_rows, index, errors
+    )
 
     await db.commit()
     TRANSACTIONS.labels(source="ofx").inc(imported)
