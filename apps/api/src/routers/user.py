@@ -1,11 +1,11 @@
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.database import get_db
+from src.core.database import async_session_factory, get_db
 from src.models.account import Account
 from src.models.bill import Bill
 from src.models.budget import Budget
@@ -96,14 +96,31 @@ async def update_settings(
     return settings
 
 
+async def _run_export(user_id: uuid.UUID) -> None:
+    """Run a data export in the background with its own DB session.
+
+    The request-scoped session is closed by the time a background task runs,
+    so this opens a fresh one and re-fetches the user.
+    """
+    try:
+        async with async_session_factory() as session:
+            result = await session.execute(select(User).where(User.id == user_id))
+            user = result.scalar_one_or_none()
+            if user is None:
+                logger.warning("Export skipped: user %s no longer exists", user_id)
+                return
+            await generate_export(session, user)
+    except Exception:
+        logger.exception("Data export failed for user %s", user_id)
+
+
 @router.post("/export", status_code=202)
 async def request_export(
+    background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
 ):
     """Request data export (async). Sends download link via email."""
-    # B phase: runs inline. At scale, offload to background job.
-    await generate_export(db, user)
+    background_tasks.add_task(_run_export, user.id)
     return {"detail": "Export started. You'll receive a download link via email."}
 
 

@@ -1,7 +1,7 @@
 import hashlib
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -338,6 +338,7 @@ async def mfa_verify(
 @router.post("/password/reset-request")
 async def password_reset_request(
     request: PasswordResetRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(rate_limit_password_reset),
 ):
@@ -349,7 +350,9 @@ async def password_reset_request(
 
     if user and user.password_hash:
         token = create_password_reset_token(user.id, user.password_hash)
-        send_password_reset_email(user.email, token)
+        # Send the email after the response: the sync Resend HTTPS call would
+        # otherwise block the event loop for the full round-trip.
+        background_tasks.add_task(send_password_reset_email, user.email, token)
 
     # Always return 200 to not reveal if email exists
     return {"detail": "If that email is registered, a reset link has been sent"}

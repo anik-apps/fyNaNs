@@ -1,5 +1,6 @@
 """Integration tests for budgets, bills, notifications, and device tokens."""
 
+import time
 import uuid
 
 import httpx
@@ -278,8 +279,24 @@ class TestUserExportAndDeletion:
         return headers, email
 
     def test_export_user_data(self, client: httpx.Client, auth_headers):
+        start = time.monotonic()
         resp = client.post("/user/export", headers=auth_headers)
+        elapsed = time.monotonic() - start
         assert resp.status_code == 202
+        # The export is generated in a background task, so the 202 must come
+        # back promptly instead of after the full build.
+        assert elapsed < 2.0, f"export request took {elapsed:.2f}s — export may run inline"
+
+        # The only external side effect is an email, so verify the API stays
+        # healthy while/after the background export runs (it must not crash
+        # or wedge the worker). Poll /health for a few seconds.
+        deadline = time.monotonic() + 2.0
+        while True:
+            health = client.get("/health")
+            assert health.status_code == 200, f"/health returned {health.status_code} after export"
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(0.25)
 
     def test_delete_account_cascades_all_data(self, client: httpx.Client):
         headers, email = self._create_user_with_data(client)

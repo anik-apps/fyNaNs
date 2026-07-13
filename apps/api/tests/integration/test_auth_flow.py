@@ -6,6 +6,7 @@ tokens extract them from the Set-Cookie header since httpx sync client doesn't
 auto-forward cookies.
 """
 
+import time
 import uuid
 
 import httpx
@@ -207,8 +208,13 @@ def test_mfa_setup_confirm_login_flow(client: httpx.Client):
 
 def test_password_reset_request(client: httpx.Client, test_user):
     """Password reset request always returns 200 (no email leak)."""
+    start = time.monotonic()
     resp = client.post("/auth/password/reset-request", json={"email": test_user["email"]})
+    elapsed = time.monotonic() - start
     assert resp.status_code == 200
+    # The email send is offloaded to a background task, so the handler must
+    # respond promptly instead of waiting on the email provider round-trip.
+    assert elapsed < 2.0, f"reset-request took {elapsed:.2f}s — email send may be blocking"
 
     # Non-existent email also returns 200
     resp = client.post("/auth/password/reset-request", json={
