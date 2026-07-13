@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   type AuthUser,
   type LoginCredentials,
@@ -51,6 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
   const pathname = usePathname();
+  const queryClient = useQueryClient();
 
   // Try to restore session on mount
   useEffect(() => {
@@ -115,8 +117,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(async () => {
     await logoutFn();
     setUser(null);
+    // Logout navigates client-side (no full reload), so drop all cached
+    // query data to avoid leaking it into the next session.
+    queryClient.clear();
     router.push(ROUTES.LOGIN);
-  }, [router]);
+  }, [queryClient, router]);
 
   return (
     <AuthContext.Provider

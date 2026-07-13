@@ -1,5 +1,19 @@
 import { API_URL } from "./constants";
 
+/**
+ * Error thrown by apiFetch for non-OK responses, carrying the HTTP status.
+ * Used by React Query's retry predicate to skip retries on 4xx errors.
+ */
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 let accessToken: string | null = null;
 
 export function setAccessToken(token: string | null) {
@@ -94,6 +108,10 @@ export async function apiFetch<T>(
     } else {
       if (typeof window !== "undefined") {
         window.location.href = "/login";
+        // The redirect is asynchronous: if we threw here, callers would
+        // flash error UI (and Retry could re-fire requests) while the page
+        // unloads. Return a promise that never settles instead.
+        return new Promise<T>(() => {});
       }
     }
   }
@@ -102,7 +120,22 @@ export async function apiFetch<T>(
     const error = await response
       .json()
       .catch(() => ({ detail: "Request failed" }));
-    throw new Error(error.detail || `API error: ${response.status}`);
+    const detail = error.detail;
+    // FastAPI 422 responses carry `detail` as an array of validation error
+    // objects — flatten to their messages instead of "[object Object]".
+    const message =
+      typeof detail === "string"
+        ? detail
+        : Array.isArray(detail)
+          ? detail
+              .map((d: { msg?: string }) => d?.msg)
+              .filter(Boolean)
+              .join("; ")
+          : "";
+    throw new ApiError(
+      message || `API error: ${response.status}`,
+      response.status
+    );
   }
 
   // Handle 204 No Content

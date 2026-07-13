@@ -1,10 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
-import { NetWorthCard } from "@/components/dashboard/net-worth-card";
+import { Button } from "@/components/ui/button";
+import {
+  NetWorthCard,
+  netWorthHistoryQueryOptions,
+  DEFAULT_NET_WORTH_PERIOD,
+} from "@/components/dashboard/net-worth-card";
 import { AccountsSummary } from "@/components/dashboard/accounts-summary";
-import { SpendingChart } from "@/components/dashboard/spending-chart";
+import {
+  SpendingChart,
+  spendingHistoryQueryOptions,
+  DEFAULT_SPENDING_VIEW,
+} from "@/components/dashboard/spending-chart";
 import { BudgetBars } from "@/components/dashboard/budget-bars";
 import { UpcomingBills } from "@/components/dashboard/upcoming-bills";
 import { RecentTransactions } from "@/components/dashboard/recent-transactions";
@@ -88,25 +98,43 @@ function DashboardSkeleton() {
 }
 
 export default function DashboardPage() {
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const { data, isPending, isError, error, refetch } = useQuery({
+    queryKey: ["dashboard"],
+    queryFn: () => apiFetch<DashboardData>("/api/dashboard"),
+  });
 
+  // Kick off the chart history fetches concurrently with the dashboard query,
+  // instead of waiting for the cards to mount after it resolves.
   useEffect(() => {
-    async function fetchDashboard() {
-      try {
-        const result = await apiFetch<DashboardData>("/api/dashboard");
-        setData(result);
-      } catch {
-        // Auth redirect handled by apiFetch
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    fetchDashboard();
-  }, []);
+    queryClient.prefetchQuery(
+      netWorthHistoryQueryOptions(DEFAULT_NET_WORTH_PERIOD)
+    );
+    queryClient.prefetchQuery(
+      spendingHistoryQueryOptions(DEFAULT_SPENDING_VIEW)
+    );
+  }, [queryClient]);
 
-  if (isLoading || !data) {
+  if (isPending) {
     return <DashboardSkeleton />;
+  }
+
+  if (isError) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-bold">Dashboard</h1>
+        <div className="p-4 text-sm text-destructive bg-destructive/10 rounded-md flex items-center justify-between gap-4">
+          <span>
+            {error instanceof Error
+              ? error.message
+              : "Failed to load dashboard"}
+          </span>
+          <Button variant="outline" size="sm" onClick={() => refetch()}>
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   return (

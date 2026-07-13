@@ -1,22 +1,21 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useState } from "react";
+import dynamic from "next/dynamic";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency, cn } from "@/lib/utils";
 import { Expand } from "lucide-react";
 import { apiFetch } from "@/lib/api-client";
 import { ChartModal } from "./chart-modal";
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend,
-  CartesianGrid,
-} from "recharts";
+import type { SpendingPoint } from "./spending-bar-chart";
+
+const SpendingBarChart = dynamic(() => import("./spending-bar-chart"), {
+  ssr: false,
+  loading: () => <Skeleton className="h-full w-full" />,
+});
 
 interface SpendingChartProps {
   currentMonth: string;
@@ -25,77 +24,24 @@ interface SpendingChartProps {
   percentChange: number | null;
 }
 
-interface SpendingPoint {
-  label: string;
-  spending: number;
-  income: number;
-}
-
 const VIEWS = [
   { value: "monthly", label: "6M" },
   { value: "monthly-12", label: "12M" },
   { value: "yearly", label: "Yearly" },
 ];
 
-interface TooltipProps {
-  active?: boolean;
-  payload?: Array<{ name: string; value: number; color: string }>;
-  label?: string;
-}
+export const DEFAULT_SPENDING_VIEW = "monthly";
 
-function CustomTooltip({ active, payload, label }: TooltipProps) {
-  if (active && payload?.length) {
-    return (
-      <div className="bg-popover border rounded-md px-3 py-2 shadow-md text-sm">
-        <p className="font-medium mb-1">{label}</p>
-        {payload.map((entry) => (
-          <p key={entry.name} style={{ color: entry.color }}>
-            {entry.name}: {formatCurrency(entry.value)}
-          </p>
-        ))}
-      </div>
-    );
-  }
-  return null;
-}
-
-function SpendingBarChart({
-  data,
-  height,
-  showGrid = false,
-}: {
-  data: SpendingPoint[];
-  height: string | number;
-  showGrid?: boolean;
-}) {
-  return (
-    <ResponsiveContainer width="100%" height={height}>
-      <BarChart data={data} barGap={2}>
-        {showGrid && (
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.5} />
-        )}
-        <XAxis
-          dataKey="label"
-          tick={{ fontSize: showGrid ? 12 : 10, fill: "var(--muted-foreground)" }}
-          axisLine={false}
-          tickLine={false}
-        />
-        <YAxis
-          hide={!showGrid}
-          tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
-          tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
-          axisLine={false}
-          tickLine={false}
-          width={55}
-          domain={[0, "auto"]}
-        />
-        <Tooltip content={<CustomTooltip />} />
-        <Legend iconSize={8} wrapperStyle={{ fontSize: showGrid ? "12px" : "10px" }} />
-        <Bar dataKey="spending" name="Spending" fill="#ef4444" radius={[3, 3, 0, 0]} maxBarSize={showGrid ? 48 : 32} />
-        <Bar dataKey="income" name="Income" fill="#22c55e" radius={[3, 3, 0, 0]} maxBarSize={showGrid ? 48 : 32} />
-      </BarChart>
-    </ResponsiveContainer>
-  );
+export function spendingHistoryQueryOptions(view: string) {
+  const isYearly = view === "yearly";
+  const months = view === "monthly-12" ? 12 : view === "yearly" ? 60 : 6;
+  return {
+    queryKey: ["spending-history", view],
+    queryFn: () =>
+      apiFetch<{ points: SpendingPoint[] }>(
+        `/api/dashboard/spending-history?view=${isYearly ? "yearly" : "monthly"}&months=${months}`
+      ),
+  };
 }
 
 export function SpendingChart({
@@ -107,30 +53,17 @@ export function SpendingChart({
   const diff = parseFloat(difference);
   const isUp = diff > 0;
 
-  const [view, setView] = useState("monthly");
-  const [chartData, setChartData] = useState<SpendingPoint[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [view, setView] = useState(DEFAULT_SPENDING_VIEW);
   const [modalOpen, setModalOpen] = useState(false);
 
-  const fetchHistory = useCallback(async (v: string) => {
-    setIsLoading(true);
-    try {
-      const isYearly = v === "yearly";
-      const months = v === "monthly-12" ? 12 : v === "yearly" ? 60 : 6;
-      const data = await apiFetch<{ points: SpendingPoint[] }>(
-        `/api/dashboard/spending-history?view=${isYearly ? "yearly" : "monthly"}&months=${months}`
-      );
-      setChartData(data.points);
-    } catch {
-      setChartData([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchHistory(view);
-  }, [view, fetchHistory]);
+  const {
+    data: history,
+    isPending,
+    isError,
+    error,
+    refetch,
+  } = useQuery(spendingHistoryQueryOptions(view));
+  const chartData = history?.points ?? [];
 
   const viewButtons = (
     <div className="flex gap-0.5">
@@ -184,7 +117,7 @@ export function SpendingChart({
             </div>
           </div>
 
-          {chartData.length > 0 && !isLoading && (
+          {chartData.length > 0 && !isPending && (
             <div
               className="h-40 -mx-2 cursor-pointer"
               onClick={() => setModalOpen(true)}
@@ -192,9 +125,28 @@ export function SpendingChart({
               <SpendingBarChart data={chartData} height="100%" />
             </div>
           )}
-          {isLoading && (
+          {isPending && (
             <div className="h-40 flex items-center justify-center text-xs text-muted-foreground">
               Loading chart...
+            </div>
+          )}
+          {isError && (
+            <div className="h-40 flex items-center justify-center">
+              <div className="p-2 text-xs text-destructive bg-destructive/10 rounded-md flex items-center gap-3">
+                <span>
+                  {error instanceof Error
+                    ? error.message
+                    : "Failed to load chart"}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-6 px-2 text-xs"
+                  onClick={() => refetch()}
+                >
+                  Retry
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>

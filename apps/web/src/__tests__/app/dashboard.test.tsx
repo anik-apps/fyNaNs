@@ -1,13 +1,40 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NetWorthCard } from "@/components/dashboard/net-worth-card";
 import { BudgetBars } from "@/components/dashboard/budget-bars";
 import { UpcomingBills } from "@/components/dashboard/upcoming-bills";
 
+// Components fire history queries through apiFetch on mount — stub fetch so
+// tests never hit the network (auth refresh endpoint included).
+beforeEach(() => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({}),
+    })
+  );
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+function renderWithQueryClient(ui: React.ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
+  );
+}
+
 describe("Dashboard Components", () => {
   describe("NetWorthCard", () => {
     it("renders positive net worth in green", () => {
-      render(
+      renderWithQueryClient(
         <NetWorthCard
           totalAssets="15000.00"
           totalLiabilities="2000.00"
@@ -19,7 +46,7 @@ describe("Dashboard Components", () => {
     });
 
     it("renders zero net worth without color", () => {
-      render(
+      renderWithQueryClient(
         <NetWorthCard totalAssets="0" totalLiabilities="0" netWorth="0" />
       );
       // Multiple $0.00 elements (net worth, assets, liabilities) — use getAllByText
