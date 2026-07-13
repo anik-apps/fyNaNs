@@ -127,6 +127,25 @@ async def list_transactions(
 # Duplicate detection window: same (amount, description) within +/- 3 days (inclusive).
 _DUP_WINDOW = timedelta(days=3)
 
+# Sanity bounds for imported transaction dates. Rows outside this window are
+# rejected as error rows: extreme dates would overflow the +/- window arithmetic
+# and let a single outlier row widen the duplicate-detection range query to the
+# user's entire history.
+_MIN_IMPORT_DATE = date(1900, 1, 1)
+_MAX_IMPORT_DATE = date(2100, 12, 31)
+
+
+def _validate_import_row(txn_date: date, amount: Decimal) -> str | None:
+    """Return an error reason if a parsed row's date or amount is not importable."""
+    if not _MIN_IMPORT_DATE <= txn_date <= _MAX_IMPORT_DATE:
+        return (
+            f"Date out of supported range ({_MIN_IMPORT_DATE.isoformat()} to "
+            f"{_MAX_IMPORT_DATE.isoformat()}): {txn_date.isoformat()}"
+        )
+    if not amount.is_finite():
+        return f"Amount is not a finite number: {amount}"
+    return None
+
 # Index of existing transactions: (amount, description) -> sorted list of dates.
 _DuplicateIndex = dict[tuple[Decimal, str], list[date]]
 
@@ -261,6 +280,11 @@ async def import_csv(
                 errors.append({"row": row_num, "reason": f"Invalid amount: {amount_str}"})
                 continue
 
+            reason = _validate_import_row(txn_date, amount)
+            if reason:
+                errors.append({"row": row_num, "reason": reason})
+                continue
+
             parsed_rows.append({
                 "row": row_num,
                 "date": txn_date,
@@ -315,6 +339,11 @@ async def import_ofx(
                 txn_date = txn_data.date.date() if hasattr(txn_data.date, "date") else txn_data.date
                 amount = Decimal(str(txn_data.amount))
                 description = txn_data.memo or txn_data.payee or "Unknown"
+
+                reason = _validate_import_row(txn_date, amount)
+                if reason:
+                    errors.append({"row": row_num, "reason": reason})
+                    continue
 
                 parsed_rows.append({
                     "row": row_num,

@@ -311,6 +311,31 @@ class TestTransactions:
         assert data["skipped_duplicates"] == 0
         assert data["errors"] == []
 
+    def test_import_csv_rejects_extreme_dates_and_nan_amounts(
+        self, client: httpx.Client, auth_headers
+    ):
+        """Out-of-range dates and non-finite amounts become error rows,
+        while valid rows in the same file still import (200, not 500)."""
+        account_id = self._get_or_create_account(client, auth_headers)
+
+        csv_content = (
+            "Date,Amount,Description\n"
+            "9999-12-31,10.00,Far Future Row\n"        # row 1: date too far in future
+            "0001-01-02,10.00,Ancient Row\n"           # row 2: date too far in past
+            "06/05/2026,NaN,NaN Amount Row\n"          # row 3: non-finite amount
+            "06/06/2026,21.50,Extreme Test Valid A\n"  # row 4: valid
+            "06/07/2026,33.75,Extreme Test Valid B\n"  # row 5: valid
+        )
+
+        # _import_csv asserts the response is 200 (not a 500 from the bad rows)
+        data = self._import_csv(
+            client, auth_headers, account_id, csv_content, name="extreme.csv"
+        )
+        assert data["imported"] == 2
+        assert data["skipped_duplicates"] == 0
+        assert len(data["errors"]) == 3
+        assert sorted(e["row"] for e in data["errors"]) == [1, 2, 3]
+
     def test_import_ofx(self, client: httpx.Client, auth_headers):
         """OFX import parses transactions and deduplicates on re-import."""
         account_id = self._get_or_create_account(client, auth_headers)
