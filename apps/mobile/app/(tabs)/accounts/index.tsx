@@ -4,40 +4,37 @@ import {
   Text,
   StyleSheet,
   RefreshControl,
-  ActivityIndicator,
   TouchableOpacity,
   Alert,
 } from "react-native";
-import { Stack, useRouter, useFocusEffect } from "expo-router";
+import { Stack, useRouter } from "expo-router";
+import { useQuery } from "@tanstack/react-query";
 import { Plus } from "lucide-react-native";
 import { AccountList } from "@/src/components/accounts/AccountList";
 import { EmptyState } from "@/src/components/shared/EmptyState";
 import { ErrorView } from "@/src/components/shared/ErrorView";
-import { useApi } from "@/src/hooks/useApi";
 import { apiFetch } from "@/src/lib/api-client";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { createLinkToken, openPlaidLink } from "@/src/lib/plaid";
+import { useRefreshOnFocus } from "@/src/hooks/useRefreshOnFocus";
+import { CardSkeleton } from "@/src/components/shared/LoadingSkeleton";
 
 export default function AccountsScreen() {
   const { theme } = useTheme();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
 
-  const { data, isLoading, error, refresh } = useApi<any[]>(() =>
-    apiFetch("/api/accounts")
-  );
-
-  useFocusEffect(
-    useCallback(() => {
-      refresh();
-    }, [refresh])
-  );
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ["accounts"],
+    queryFn: () => apiFetch<any[]>("/api/accounts"),
+  });
+  useRefreshOnFocus(refetch);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
+    await refetch();
     setRefreshing(false);
-  }, [refresh]);
+  }, [refetch]);
 
   function handleAccountPress(id: string) {
     router.push(`/(tabs)/accounts/${id}`);
@@ -46,9 +43,15 @@ export default function AccountsScreen() {
   if (isLoading) {
     return (
       <View
-        style={[styles.center, { backgroundColor: theme.colors.background }]}
+        style={[
+          styles.container,
+          styles.skeletonWrap,
+          { backgroundColor: theme.colors.surface },
+        ]}
       >
-        <ActivityIndicator size="large" color={theme.colors.primary} />
+        <CardSkeleton />
+        <CardSkeleton />
+        <CardSkeleton />
       </View>
     );
   }
@@ -56,7 +59,7 @@ export default function AccountsScreen() {
   if (error) {
     return (
       <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
-        <ErrorView message={error.message} onRetry={refresh} />
+        <ErrorView message={error.message} onRetry={() => refetch()} />
       </View>
     );
   }
@@ -76,7 +79,7 @@ export default function AccountsScreen() {
                     const token = await createLinkToken();
                     openPlaidLink(
                       token,
-                      () => refresh(),
+                      () => refetch(),
                       (err) => { if (err) Alert.alert("Error", err); }
                     );
                   } catch (e: any) {
@@ -129,6 +132,7 @@ export default function AccountsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  skeletonWrap: { paddingTop: 12 },
   linkButton: {
     paddingHorizontal: 24,
     paddingVertical: 12,

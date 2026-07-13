@@ -9,10 +9,12 @@ import {
   TouchableOpacity,
 } from "react-native";
 import { useLocalSearchParams, Stack, useRouter } from "expo-router";
-import { useApi } from "@/src/hooks/useApi";
+import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/src/lib/api-client";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { ErrorView } from "@/src/components/shared/ErrorView";
+import { useRefreshOnFocus } from "@/src/hooks/useRefreshOnFocus";
+import { Skeleton, CardSkeleton } from "@/src/components/shared/LoadingSkeleton";
 import { formatCurrency, formatRelativeDate } from "@/src/lib/utils";
 import { ACCOUNT_TYPE_LABELS } from "@fynans/shared-types";
 import {
@@ -52,23 +54,36 @@ export default function AccountDetailScreen() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
 
-  const { data: account, isLoading, error, refresh } = useApi<any>(() =>
-    apiFetch(`/api/accounts/${id}`)
-  );
+  const {
+    data: account,
+    isLoading,
+    error,
+    refetch: refetchAccount,
+  } = useQuery({
+    queryKey: ["accounts", id],
+    queryFn: () => apiFetch<any>(`/api/accounts/${id}`),
+  });
 
   const {
     data: txData,
     isLoading: txLoading,
-    refresh: refreshTx,
-  } = useApi<any>(() =>
-    apiFetch(`/api/transactions?account_id=${id}&limit=50`)
+    refetch: refetchTx,
+  } = useQuery({
+    queryKey: ["transactions", { account_id: id }],
+    queryFn: () => apiFetch<any>(`/api/transactions?account_id=${id}&limit=50`),
+  });
+
+  const refetchAll = useCallback(
+    () => Promise.all([refetchAccount(), refetchTx()]),
+    [refetchAccount, refetchTx]
   );
+  useRefreshOnFocus(refetchAll);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([refresh(), refreshTx()]);
+    await refetchAll();
     setRefreshing(false);
-  }, [refresh, refreshTx]);
+  }, [refetchAll]);
 
   const transactions = txData?.items || txData || [];
 
@@ -93,9 +108,21 @@ export default function AccountDetailScreen() {
   if (isLoading) {
     return (
       <View
-        style={[styles.center, { backgroundColor: theme.colors.background }]}
+        style={[
+          styles.container,
+          styles.skeletonWrap,
+          { backgroundColor: theme.colors.surface },
+        ]}
       >
-        <ActivityIndicator size="large" color={theme.colors.primary} />
+        {/* Balance header card */}
+        <CardSkeleton />
+        {/* Transaction rows */}
+        <View style={styles.skeletonRows}>
+          <Skeleton width="100%" height={48} borderRadius={12} />
+          <Skeleton width="100%" height={48} borderRadius={12} />
+          <Skeleton width="100%" height={48} borderRadius={12} />
+          <Skeleton width="100%" height={48} borderRadius={12} />
+        </View>
       </View>
     );
   }
@@ -105,7 +132,7 @@ export default function AccountDetailScreen() {
       <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
         <ErrorView
           message={error?.message || "Account not found"}
-          onRetry={refresh}
+          onRetry={() => refetchAccount()}
         />
       </View>
     );
@@ -234,6 +261,8 @@ export default function AccountDetailScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  skeletonWrap: { paddingTop: 12 },
+  skeletonRows: { paddingHorizontal: 16, gap: 12, marginTop: 8 },
   header: {
     padding: 16,
     marginHorizontal: 16,

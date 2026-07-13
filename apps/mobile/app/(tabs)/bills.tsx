@@ -6,16 +6,17 @@ import {
   TouchableOpacity,
   Text,
   StyleSheet,
-  ActivityIndicator,
 } from "react-native";
 import { Plus, Receipt } from "lucide-react-native";
+import { useQuery } from "@tanstack/react-query";
 import { BillCard } from "@/src/components/bills/BillCard";
 import { BillForm } from "@/src/components/bills/BillForm";
 import { EmptyState } from "@/src/components/shared/EmptyState";
 import { ErrorView } from "@/src/components/shared/ErrorView";
-import { useApi } from "@/src/hooks/useApi";
 import { apiFetch } from "@/src/lib/api-client";
 import { useTheme } from "@/src/providers/ThemeProvider";
+import { useRefreshOnFocus } from "@/src/hooks/useRefreshOnFocus";
+import { CardSkeleton } from "@/src/components/shared/LoadingSkeleton";
 
 export default function BillsScreen() {
   const { theme } = useTheme();
@@ -23,15 +24,17 @@ export default function BillsScreen() {
   const [showForm, setShowForm] = useState(false);
   const [filter, setFilter] = useState<"all" | "upcoming">("all");
 
-  const { data, isLoading, error, refresh } = useApi<any[]>(() =>
-    apiFetch("/api/bills")
-  );
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ["bills"],
+    queryFn: () => apiFetch<any[]>("/api/bills"),
+  });
+  useRefreshOnFocus(refetch);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
+    await refetch();
     setRefreshing(false);
-  }, [refresh]);
+  }, [refetch]);
 
   async function handleCreateBill(billData: any) {
     try {
@@ -39,7 +42,7 @@ export default function BillsScreen() {
         method: "POST",
         body: JSON.stringify(billData),
       });
-      refresh();
+      refetch();
     } catch {
       // Error handled by the form
     }
@@ -59,9 +62,15 @@ export default function BillsScreen() {
   if (isLoading) {
     return (
       <View
-        style={[styles.center, { backgroundColor: theme.colors.background }]}
+        style={[
+          styles.container,
+          styles.skeletonWrap,
+          { backgroundColor: theme.colors.surface },
+        ]}
       >
-        <ActivityIndicator size="large" color={theme.colors.primary} />
+        <CardSkeleton />
+        <CardSkeleton />
+        <CardSkeleton />
       </View>
     );
   }
@@ -69,7 +78,7 @@ export default function BillsScreen() {
   if (error) {
     return (
       <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
-        <ErrorView message={error.message} onRetry={refresh} />
+        <ErrorView message={error.message} onRetry={() => refetch()} />
       </View>
     );
   }
@@ -166,6 +175,7 @@ export default function BillsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  skeletonWrap: { paddingTop: 12 },
   segmentRow: {
     flexDirection: "row",
     margin: 12,

@@ -1,33 +1,43 @@
 import React, { useCallback, useState } from "react";
-import { View, FlatList, RefreshControl, Pressable, StyleSheet, ActivityIndicator, Text } from "react-native";
+import { View, FlatList, RefreshControl, Pressable, StyleSheet } from "react-native";
 import { Plus, Target } from "lucide-react-native";
-import { useRouter, useFocusEffect } from "expo-router";
+import { useRouter } from "expo-router";
+import { useQuery } from "@tanstack/react-query";
 import { GoalCard, type GoalCardGoal } from "@/src/components/goals/GoalCard";
 import { EmptyState } from "@/src/components/shared/EmptyState";
 import { ErrorView } from "@/src/components/shared/ErrorView";
-import { useApi } from "@/src/hooks/useApi";
 import { apiFetch } from "@/src/lib/api-client";
 import { useTheme } from "@/src/providers/ThemeProvider";
+import { useRefreshOnFocus } from "@/src/hooks/useRefreshOnFocus";
+import { CardSkeleton } from "@/src/components/shared/LoadingSkeleton";
 
 export default function GoalsScreen() {
   const { theme } = useTheme();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
 
-  const { data: active, isLoading, error, refresh } = useApi<GoalCardGoal[]>(() =>
-    apiFetch("/api/goals?status=active")
-  );
-
-  useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
+  const { data: active, isLoading, error, refetch } = useQuery({
+    queryKey: ["goals", "active"],
+    queryFn: () => apiFetch<GoalCardGoal[]>("/api/goals?status=active"),
+  });
+  useRefreshOnFocus(refetch);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
+    await refetch();
     setRefreshing(false);
-  }, [refresh]);
+  }, [refetch]);
 
-  if (isLoading && !active) return <ActivityIndicator style={{ marginTop: 40 }} />;
-  if (error) return <ErrorView message={String(error)} onRetry={refresh} />;
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, paddingTop: 12, backgroundColor: theme.colors.background }}>
+        <CardSkeleton />
+        <CardSkeleton />
+        <CardSkeleton />
+      </View>
+    );
+  }
+  if (error) return <ErrorView message={error.message} onRetry={() => refetch()} />;
 
   if (!active || active.length === 0) {
     return (

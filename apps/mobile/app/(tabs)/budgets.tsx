@@ -6,32 +6,35 @@ import {
   TouchableOpacity,
   Text,
   StyleSheet,
-  ActivityIndicator,
 } from "react-native";
 import { Plus, Wallet } from "lucide-react-native";
+import { useQuery } from "@tanstack/react-query";
 import { BudgetCard } from "@/src/components/budgets/BudgetCard";
 import { BudgetForm } from "@/src/components/budgets/BudgetForm";
 import { GoalsSection } from "@/src/components/goals/GoalsSection";
 import { EmptyState } from "@/src/components/shared/EmptyState";
 import { ErrorView } from "@/src/components/shared/ErrorView";
-import { useApi } from "@/src/hooks/useApi";
 import { apiFetch } from "@/src/lib/api-client";
 import { useTheme } from "@/src/providers/ThemeProvider";
+import { useRefreshOnFocus } from "@/src/hooks/useRefreshOnFocus";
+import { CardSkeleton } from "@/src/components/shared/LoadingSkeleton";
 
 export default function BudgetsScreen() {
   const { theme } = useTheme();
   const [refreshing, setRefreshing] = useState(false);
   const [showForm, setShowForm] = useState(false);
 
-  const { data, isLoading, error, refresh } = useApi<any[]>(() =>
-    apiFetch("/api/budgets")
-  );
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ["budgets"],
+    queryFn: () => apiFetch<any[]>("/api/budgets"),
+  });
+  useRefreshOnFocus(refetch);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
+    await refetch();
     setRefreshing(false);
-  }, [refresh]);
+  }, [refetch]);
 
   async function handleCreateBudget(budgetData: {
     category_name: string;
@@ -43,7 +46,7 @@ export default function BudgetsScreen() {
         method: "POST",
         body: JSON.stringify(budgetData),
       });
-      refresh();
+      refetch();
     } catch {
       // Error handled by the form
     }
@@ -52,9 +55,15 @@ export default function BudgetsScreen() {
   if (isLoading) {
     return (
       <View
-        style={[styles.center, { backgroundColor: theme.colors.background }]}
+        style={[
+          styles.container,
+          styles.skeletonWrap,
+          { backgroundColor: theme.colors.surface },
+        ]}
       >
-        <ActivityIndicator size="large" color={theme.colors.primary} />
+        <CardSkeleton />
+        <CardSkeleton />
+        <CardSkeleton />
       </View>
     );
   }
@@ -62,7 +71,7 @@ export default function BudgetsScreen() {
   if (error) {
     return (
       <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
-        <ErrorView message={error.message} onRetry={refresh} />
+        <ErrorView message={error.message} onRetry={() => refetch()} />
       </View>
     );
   }
@@ -125,6 +134,7 @@ export default function BudgetsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  skeletonWrap: { paddingTop: 12 },
   list: { paddingTop: 12, paddingBottom: 80 },
   fab: {
     position: "absolute",

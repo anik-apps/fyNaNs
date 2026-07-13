@@ -1,4 +1,9 @@
-import { apiFetch, setAccessToken, getAccessToken } from "@/src/lib/api-client";
+import {
+  apiFetch,
+  setAccessToken,
+  getAccessToken,
+  ApiError,
+} from "@/src/lib/api-client";
 
 // Mock fetch globally
 const mockFetch = jest.fn();
@@ -76,6 +81,20 @@ describe("api-client", () => {
     });
 
     await expect(apiFetch("/api/test")).rejects.toThrow("Server error");
+  });
+
+  it("throws ApiError carrying the HTTP status", async () => {
+    setAccessToken(null);
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      json: async () => ({ detail: "Not found" }),
+    });
+
+    const err: unknown = await apiFetch("/api/test").catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).status).toBe(404);
+    expect((err as ApiError).message).toBe("Not found");
   });
 
   it("sets and gets access token", () => {

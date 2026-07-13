@@ -6,6 +6,20 @@ import {
   getDeviceInfo,
 } from "./auth-storage";
 
+/**
+ * Error thrown by apiFetch for non-ok responses. Carries the HTTP status so
+ * callers (e.g. the React Query retry predicate) can distinguish 4xx from 5xx.
+ */
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 let accessToken: string | null = null;
 let refreshPromise: Promise<boolean> | null = null;
 
@@ -119,7 +133,10 @@ export async function apiFetch<T>(
     const error = await response
       .json()
       .catch(() => ({ detail: "Request failed" }));
-    throw new Error(error.detail || `API error: ${response.status}`);
+    throw new ApiError(
+      error.detail || `API error: ${response.status}`,
+      response.status
+    );
   }
 
   if (response.status === 204) {

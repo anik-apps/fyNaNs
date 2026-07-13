@@ -1,14 +1,53 @@
 import { useEffect, useRef, useState } from "react";
-import { AppState, type AppStateStatus, View, StyleSheet } from "react-native";
+import {
+  AppState,
+  type AppStateStatus,
+  Platform,
+  View,
+  StyleSheet,
+} from "react-native";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import {
+  QueryClient,
+  QueryClientProvider,
+  focusManager,
+} from "@tanstack/react-query";
 import { AuthProvider } from "@/src/providers/AuthProvider";
 import { ThemeProvider } from "@/src/providers/ThemeProvider";
 import { useBiometric } from "@/src/hooks/useBiometric";
 import { useAuth } from "@/src/hooks/useAuth";
+import { ApiError } from "@/src/lib/api-client";
 // Push notifications removed from Expo Go SDK 53+
 // import { usePushNotifications } from "@/src/hooks/usePushNotifications";
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      retry: (failureCount, error) => {
+        // Client errors (4xx) won't succeed on retry; don't hammer the API.
+        if (
+          error instanceof ApiError &&
+          error.status >= 400 &&
+          error.status < 500
+        ) {
+          return false;
+        }
+        return failureCount < 3;
+      },
+    },
+  },
+});
+
+// Wire TanStack Query's focusManager to React Native's AppState so queries
+// refetch (when stale) as the app returns to the foreground.
+function onAppStateChange(status: AppStateStatus) {
+  if (Platform.OS !== "web") {
+    focusManager.setFocused(status === "active");
+  }
+}
 
 try {
   GoogleSignin.configure({
@@ -57,18 +96,25 @@ function AppContent({ children }: { children: React.ReactNode }) {
 }
 
 export default function RootLayout() {
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", onAppStateChange);
+    return () => subscription.remove();
+  }, []);
+
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <StatusBar style="auto" />
-        <AppContent>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(auth)" />
-            <Stack.Screen name="(tabs)" />
-          </Stack>
-        </AppContent>
-      </AuthProvider>
-    </ThemeProvider>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <AuthProvider>
+          <StatusBar style="auto" />
+          <AppContent>
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="(auth)" />
+              <Stack.Screen name="(tabs)" />
+            </Stack>
+          </AppContent>
+        </AuthProvider>
+      </ThemeProvider>
+    </QueryClientProvider>
   );
 }
 
