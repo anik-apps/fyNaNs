@@ -24,10 +24,30 @@ class DateTimeEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-async def generate_export(db: AsyncSession, user: User) -> None:
-    """Generate a ZIP file of user data and send download link via email.
+def build_and_send_export(export_data: dict, to_email: str) -> None:
+    """Build the export ZIP and send it. Fully sync; run via asyncio.to_thread.
 
-    Format: ZIP containing JSON files per entity.
+    json.dumps + zipfile compression are CPU-bound and send_export_email makes
+    a blocking HTTPS call, so none of this may run on the event loop.
+    """
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for entity_name, data in export_data.items():
+            content = json.dumps(data, indent=2, cls=DateTimeEncoder)
+            zf.writestr(f"{entity_name}.json", content)
+
+    # In production, upload to OCI Object Storage and send download link via email
+    # For now, log/store temporarily
+    send_export_email(to_email, zip_buffer.getvalue())
+
+
+async def collect_export_data(db: AsyncSession, user: User) -> dict:
+    """DB phase of an export: query all user data and return it as plain values.
+
+    Only this part needs a session. The caller should close the session
+    before handing the result to ``build_and_send_export`` (via
+    ``asyncio.to_thread``) so no pooled connection is pinned while the ZIP
+    is built and emailed.
     """
     export_data = {}
 
@@ -109,15 +129,4 @@ async def generate_export(db: AsyncSession, user: User) -> None:
         for bl in bills
     ]
 
-    # Create ZIP
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        for entity_name, data in export_data.items():
-            content = json.dumps(data, indent=2, cls=DateTimeEncoder)
-            zf.writestr(f"{entity_name}.json", content)
-
-    zip_buffer.seek(0)
-
-    # In production, upload to OCI Object Storage and send download link via email
-    # For now, log/store temporarily
-    send_export_email(user.email, zip_buffer.getvalue())
+    return export_data

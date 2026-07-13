@@ -17,7 +17,13 @@ class InMemoryRateLimiter:
         self._requests: dict[str, list[float]] = defaultdict(list)
         self._call_count: int = 0
 
-    def check(self, key: str, max_requests: int, window_seconds: int) -> None:
+    def check(
+        self,
+        key: str,
+        max_requests: int,
+        window_seconds: int,
+        detail: str = "Too many requests",
+    ) -> None:
         now = time.time()
         cutoff = now - window_seconds
 
@@ -25,7 +31,7 @@ class InMemoryRateLimiter:
         self._requests[key] = [t for t in self._requests[key] if t > cutoff]
 
         if len(self._requests[key]) >= max_requests:
-            raise HTTPException(status_code=429, detail="Too many requests")
+            raise HTTPException(status_code=429, detail=detail)
 
         self._requests[key].append(now)
 
@@ -94,3 +100,24 @@ def rate_limit_mfa_verify(request: Request) -> None:
     """5 MFA verify attempts per IP per 5 minutes."""
     client_ip = _get_client_ip(request)
     rate_limiter.check(f"mfa_verify:{client_ip}", max_requests=5, window_seconds=300)
+
+
+EXPORT_RATE_LIMIT_WINDOW_SECONDS = 600
+
+
+def rate_limit_export(user_id) -> None:
+    """1 data export per user per 10 minutes.
+
+    Exports are heavy (full data dump, zip, email) and run as background
+    tasks, each holding a pooled DB connection during the query phase, so an
+    unbounded queue of them can exhaust the connection pool.
+    """
+    rate_limiter.check(
+        f"export:{user_id}",
+        max_requests=1,
+        window_seconds=EXPORT_RATE_LIMIT_WINDOW_SECONDS,
+        detail=(
+            "An export was recently requested for this account. "
+            "Please wait a few minutes before requesting another."
+        ),
+    )

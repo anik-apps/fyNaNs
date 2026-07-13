@@ -1,11 +1,14 @@
+import asyncio
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.database import get_db
+from src.core.database import async_session_factory, get_db
+from src.core.metrics import EXPORTS
+from src.core.rate_limit import rate_limit_export
 from src.models.account import Account
 from src.models.bill import Bill
 from src.models.budget import Budget
@@ -22,7 +25,7 @@ from src.schemas.user import (
     SettingsResponse,
     SettingsUpdateRequest,
 )
-from src.services.export import generate_export
+from src.services.export import build_and_send_export, collect_export_data
 
 logger = logging.getLogger(__name__)
 
@@ -96,14 +99,41 @@ async def update_settings(
     return settings
 
 
+async def _run_export(user_id: uuid.UUID) -> None:
+    """Run a data export in the background with its own DB session.
+
+    The request-scoped session is closed by the time a background task runs,
+    so this opens a fresh one and re-fetches the user. The session is closed
+    before the CPU/IO-heavy zip+email phase so the pooled connection is not
+    pinned for the duration of ``asyncio.to_thread``.
+    """
+    try:
+        async with async_session_factory() as session:
+            result = await session.execute(select(User).where(User.id == user_id))
+            user = result.scalar_one_or_none()
+            if user is None:
+                logger.warning("Export skipped: user %s no longer exists", user_id)
+                return
+            email = user.email
+            export_data = await collect_export_data(session, user)
+        # Session closed: zip + email run in a thread with no connection held.
+        await asyncio.to_thread(build_and_send_export, export_data, email)
+        EXPORTS.labels(status="success").inc()
+    except Exception:
+        EXPORTS.labels(status="failure").inc()
+        logger.exception("Data export failed for user %s", user_id)
+
+
 @router.post("/export", status_code=202)
 async def request_export(
+    background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
 ):
     """Request data export (async). Sends download link via email."""
-    # B phase: runs inline. At scale, offload to background job.
-    await generate_export(db, user)
+    # Per-user limit: each queued export holds a DB connection during its
+    # query phase, so unbounded requests could exhaust the pool.
+    rate_limit_export(user.id)
+    background_tasks.add_task(_run_export, user.id)
     return {"detail": "Export started. You'll receive a download link via email."}
 
 

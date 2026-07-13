@@ -1,5 +1,6 @@
 """Integration tests for budgets, bills, notifications, and device tokens."""
 
+import time
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal
@@ -394,8 +395,53 @@ class TestUserExportAndDeletion:
         return headers, email
 
     def test_export_user_data(self, client: httpx.Client, auth_headers):
+        start = time.monotonic()
         resp = client.post("/user/export", headers=auth_headers)
+        elapsed = time.monotonic() - start
         assert resp.status_code == 202
+        # The export is generated in a background task, so the 202 must come
+        # back promptly instead of after the full build.
+        assert elapsed < 2.0, f"export request took {elapsed:.2f}s — export may run inline"
+
+        # The only external side effect is an email, so verify the API stays
+        # healthy while/after the background export runs (it must not crash
+        # or wedge the worker). Poll /health for a few seconds.
+        deadline = time.monotonic() + 2.0
+        while True:
+            health = client.get("/health")
+            assert health.status_code == 200, f"/health returned {health.status_code} after export"
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(0.25)
+
+    def _register_export_user(self, client) -> dict:
+        """Register a dedicated user (the export limiter is keyed by user id)."""
+        email = f"exportrl-{uuid.uuid4().hex[:8]}@example.com"
+        password = "ExportRL123!"
+        reg = client.post("/auth/register", json={
+            "email": email, "password": password, "name": "Export RL User"
+        })
+        assert reg.status_code == 201, f"Registration failed: {reg.text}"
+        login = client.post("/auth/login", json={"email": email, "password": password})
+        assert login.status_code == 200, f"Login failed: {login.text}"
+        return {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    def test_export_rate_limited_per_user(self, client: httpx.Client):
+        headers_a = self._register_export_user(client)
+        headers_b = self._register_export_user(client)
+
+        # First export for user A is accepted
+        first = client.post("/user/export", headers=headers_a)
+        assert first.status_code == 202
+
+        # An immediate second export for the same user is rejected
+        second = client.post("/user/export", headers=headers_a)
+        assert second.status_code == 429
+        assert "export" in second.json()["detail"].lower()
+
+        # The limit is per-user: a different user can still export
+        other = client.post("/user/export", headers=headers_b)
+        assert other.status_code == 202
 
     def test_delete_account_cascades_all_data(self, client: httpx.Client):
         headers, email = self._create_user_with_data(client)

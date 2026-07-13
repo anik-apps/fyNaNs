@@ -1,7 +1,8 @@
 import hashlib
+import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,7 +32,23 @@ from src.schemas.auth import (
 from src.services.auth import AuthError, authenticate_user, register_user
 from src.services.token import create_token_pair, revoke_refresh_token, rotate_refresh_token
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _send_reset_email_safely(email: str, token: str) -> None:
+    """BackgroundTasks wrapper for the reset email.
+
+    An email provider failure after the response has been sent would
+    otherwise escape as an unhandled ASGI exception; log it instead.
+    """
+    from src.services.email import send_password_reset_email
+
+    try:
+        send_password_reset_email(email, token)
+    except Exception:
+        logger.exception("Password reset email failed for %s", email)
 
 
 def _set_refresh_cookie(response: Response, token: str) -> None:
@@ -338,18 +355,20 @@ async def mfa_verify(
 @router.post("/password/reset-request")
 async def password_reset_request(
     request: PasswordResetRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(rate_limit_password_reset),
 ):
     from src.core.security import create_password_reset_token
-    from src.services.email import send_password_reset_email
 
     result = await db.execute(select(User).where(User.email == request.email))
     user = result.scalar_one_or_none()
 
     if user and user.password_hash:
         token = create_password_reset_token(user.id, user.password_hash)
-        send_password_reset_email(user.email, token)
+        # Send the email after the response: the sync Resend HTTPS call would
+        # otherwise block the event loop for the full round-trip.
+        background_tasks.add_task(_send_reset_email_safely, user.email, token)
 
     # Always return 200 to not reveal if email exists
     return {"detail": "If that email is registered, a reset link has been sent"}
